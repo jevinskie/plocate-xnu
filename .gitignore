@@ -1,0 +1,3 @@
+*.o
+plocate
+plocate-build
