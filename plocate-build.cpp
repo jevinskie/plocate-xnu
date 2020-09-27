@@ -231,10 +231,13 @@ void do_build(const char *infile, const char *outfile)
 
 	fclose(outfp);
 
+	size_t total_bytes = (bytes_for_trigrams + bytes_for_posting_lists + bytes_for_filename_index + bytes_for_filenames);
+
 	dprintf("Trigrams:       %'7.1f MB\n", bytes_for_trigrams / 1048576.0);
 	dprintf("Posting lists:  %'7.1f MB\n", bytes_for_posting_lists / 1048576.0);
 	dprintf("Filename index: %'7.1f MB\n", bytes_for_filename_index / 1048576.0);
 	dprintf("Filenames:      %'7.1f MB\n", bytes_for_filenames / 1048576.0);
+	dprintf("Total:          %'7.1f MB\n", total_bytes / 1048576.0);
 	dprintf("\n");
 }
 
