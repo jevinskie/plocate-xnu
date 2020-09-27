@@ -8,10 +8,10 @@ PREFIX ?= /usr/local
 all: plocate plocate-build
 
 plocate: plocate.o TurboPFor-Integer-Compression/libic.a
-	$(CXX) -o $@ $^
+	$(CXX) -o $@ $^ -lzstd
 
 plocate-build: plocate-build.o TurboPFor-Integer-Compression/libic.a
-	$(CXX) -o $@ $^
+	$(CXX) -o $@ $^ -lzstd
 
 TurboPFor-Integer-Compression/libic.a:
 	cd TurboPFor-Integer-Compression/ && $(MAKE)

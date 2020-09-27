@@ -12,6 +12,7 @@
 #include <endian.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <zstd.h>
 
 #include "vp4.h"
 
@@ -122,7 +123,17 @@ void read_mlocate(const char *filename, vector<string> *files)
 	close(fd);
 }
 
-void do_build(const char *infile, const char *outfile)
+string zstd_compress(const string &src)
+{
+	size_t max_size = ZSTD_compressBound(src.size());
+	string dst;
+	dst.resize(max_size);
+	size_t size = ZSTD_compress(&dst[0], max_size, src.data(), src.size(), /*level=*/6);
+	dst.resize(size);
+	return dst;
+}
+
+void do_build(const char *infile, const char *outfile, int block_size)
 {
 	//steady_clock::time_point start = steady_clock::now();
 
@@ -151,7 +162,7 @@ void do_build(const char *infile, const char *outfile)
 		if (s.size() >= 3) {
 			for (size_t j = 0; j < s.size() - 2; ++j) {
 				uint32_t trgm = read_trigram(s, j);
-				invindex[trgm].push_back(i);
+				invindex[trgm].push_back(i / block_size);
 			}
 		}
 	}
@@ -215,24 +226,51 @@ void do_build(const char *infile, const char *outfile)
 		bytes_for_posting_lists += pl[trgm].size();
 	}
 
+	// Compress the filenames into blocks.
+	vector<string> filename_blocks;
+	string uncompressed_filenames;
+	int num_files_this_block = 0;
+
+	string dst;
+
+	for (string &filename : files) {
+		uncompressed_filenames += filename;
+		filename.clear();
+		if (++num_files_this_block == block_size) {
+			filename_blocks.push_back(zstd_compress(uncompressed_filenames));
+			uncompressed_filenames.clear();
+			num_files_this_block = 0;
+		} else {
+			uncompressed_filenames.push_back('\0');
+		}
+	}
+	if (num_files_this_block > 0) {
+		filename_blocks.push_back(zstd_compress(uncompressed_filenames));
+	}
+	files.clear();
+
+	// Stick an empty block at the end as sentinel.
+	filename_blocks.push_back("");
+
 	// Write the offsets to the filenames.
-	offset = filename_index_offset + files.size() * sizeof(offset);
-	for (const string &filename : files) {
+	offset = filename_index_offset + filename_blocks.size() * sizeof(offset);
+	for (const string &filename : filename_blocks) {
 		fwrite(&offset, sizeof(offset), 1, outfp);
-		offset += filename.size() + 1;
+		offset += filename.size();
 		bytes_for_filename_index += sizeof(offset);
-		bytes_for_filenames += filename.size() + 1;
+		bytes_for_filenames += filename.size();
 	}
 	
 	// Write the actual filenames.
-	for (const string &filename : files) {
-		fwrite(filename.c_str(), filename.size() + 1, 1, outfp);
+	for (const string &filename : filename_blocks) {
+		fwrite(filename.data(), filename.size(), 1, outfp);
 	}
 
 	fclose(outfp);
 
-	size_t total_bytes = (bytes_for_trigrams + bytes_for_posting_lists + bytes_for_filename_index + bytes_for_filenames);
+	//size_t total_bytes = (bytes_for_trigrams + bytes_for_posting_lists + bytes_for_filename_index + bytes_for_filenames);
 
+	dprintf("Block size:     %7d files\n", block_size);
 	dprintf("Trigrams:       %'7.1f MB\n", bytes_for_trigrams / 1048576.0);
 	dprintf("Posting lists:  %'7.1f MB\n", bytes_for_posting_lists / 1048576.0);
 	dprintf("Filename index: %'7.1f MB\n", bytes_for_filename_index / 1048576.0);
@@ -243,6 +281,6 @@ void do_build(const char *infile, const char *outfile)
 
 int main(int argc, char **argv)
 {
-	do_build(argv[1], argv[2]);
+	do_build(argv[1], argv[2], 32);
 	exit(EXIT_SUCCESS);
 }

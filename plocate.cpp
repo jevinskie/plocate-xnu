@@ -10,6 +10,7 @@
 #include <sys/mman.h>
 #include <arpa/inet.h>
 #include <endian.h>
+#include <zstd.h>
 
 #include "vp4.h"
 
@@ -176,13 +177,25 @@ void do_search_file(const string &needle, const char *filename)
 	const uint64_t *filename_offsets = (const uint64_t *)(data + filename_index_offset);
 	int matched = 0;
 	for (uint32_t docid : in1) {
-		const char *filename = (const char *)(data + filename_offsets[docid]);
-		if (strstr(filename, needle.c_str()) == nullptr) {
-			continue;
-		}
-		if (has_access(filename, &access_rx_cache)) {
-			++matched;
-			printf("%s\n", filename);
+		const char *compressed = (const char *)(data + filename_offsets[docid]);
+		size_t compressed_size = filename_offsets[docid + 1] - filename_offsets[docid];  // Allowed we have a sentinel block at the end.
+
+		string block;
+		block.resize(ZSTD_getFrameContentSize(compressed, compressed_size) + 1);
+
+		ZSTD_decompress(&block[0], block.size(), compressed, compressed_size);
+		block[block.size() - 1] = '\0';
+
+		for (const char *filename = block.data();
+		     filename != block.data() + block.size();
+		     filename += strlen(filename) + 1) {
+			if (strstr(filename, needle.c_str()) == nullptr) {
+				continue;
+			}
+			if (has_access(filename, &access_rx_cache)) {
+				++matched;
+				printf("%s\n", filename);
+			}
 		}
 	}
 	end = steady_clock::now();
