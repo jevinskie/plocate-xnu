@@ -1,3 +1,4 @@
+#include <assert.h>
 #include <stdio.h>
 #include <string.h>
 #include <algorithm>
@@ -14,6 +15,8 @@
 #include <sys/stat.h>
 #include <zstd.h>
 
+#define VINT_IN
+#include "vint.h"
 #include "vp4.h"
 
 #define P4NENC_BOUND(n) ((n+127)/128+(n+32)*sizeof(uint32_t))
@@ -66,6 +69,81 @@ struct db_directory
 	uint8_t pad[4];
 };
 
+class PostingListBuilder {
+public:
+	void add_docid(uint32_t docid);
+	void finish();
+
+	string encoded;
+	size_t num_docids = 0;
+
+private:
+	void write_header(uint32_t docid);
+	void append_block();
+
+	uint32_t pending_docids[128];
+	unsigned num_pending_docids = 0;
+
+	uint32_t last_block_end;
+};
+
+void PostingListBuilder::add_docid(uint32_t docid)
+{
+	// Deduplicate against the last inserted value, if any.
+	if (num_pending_docids == 0) {
+		if (encoded.empty()) {
+			// Very first docid.
+			write_header(docid);
+			++num_docids;
+			last_block_end = docid;
+			return;
+		} else if (docid == last_block_end) {
+			return;
+		}
+	} else {
+		if (docid == pending_docids[num_pending_docids - 1]) {
+			return;
+		}
+	}
+
+	pending_docids[num_pending_docids++] = docid;
+	if (num_pending_docids == 128) {
+		append_block();
+		num_pending_docids = 0;
+		last_block_end = docid;
+	}
+	++num_docids;
+}
+
+void PostingListBuilder::finish()
+{
+	if (num_pending_docids == 0) {
+		return;
+	}
+
+	assert(!encoded.empty());  // write_header() should already have run.
+
+	// No interleaving for partial blocks.
+	unsigned char buf[P4NENC_BOUND(128)];
+	unsigned char *end = p4d1enc32(pending_docids, num_pending_docids, buf, last_block_end);
+	encoded.append(reinterpret_cast<char *>(buf), reinterpret_cast<char *>(end));
+}
+
+void PostingListBuilder::append_block()
+{
+	unsigned char buf[P4NENC_BOUND(128)];
+	assert(num_pending_docids == 128);
+	unsigned char *end = p4d1enc128v32(pending_docids, 128, buf, last_block_end);
+	encoded.append(reinterpret_cast<char *>(buf), reinterpret_cast<char *>(end));
+}
+
+void PostingListBuilder::write_header(uint32_t docid)
+{
+	unsigned char buf[P4NENC_BOUND(1)];
+	size_t bytes = p4nd1enc128v32(&docid, 1, buf);
+	encoded.append(reinterpret_cast<char *>(buf), bytes);
+}
+
 class Corpus {
 public:
 	Corpus(size_t block_size) : block_size(block_size) {}
@@ -73,7 +151,7 @@ public:
 	void flush_block();
 
 	vector<string> filename_blocks;
-	unordered_map<uint32_t, vector<uint32_t>> invindex;
+	unordered_map<uint32_t, PostingListBuilder> invindex;
 	size_t num_files = 0, num_files_in_block = 0, num_blocks = 0;
 
 private:
@@ -109,10 +187,7 @@ void Corpus::flush_block()
 		if (s.size() >= 3) {
 			for (size_t j = 0; j < s.size() - 2; ++j) {
 				uint32_t trgm = read_trigram(s, j);
-				vector<uint32_t> &docids = invindex[trgm];
-				if (docids.empty() || docids.back() != docid) {
-					docids.push_back(docid);
-				}
+				invindex[trgm].add_docid(docid);
 			}
 		}
 		ptr += s.size() + 1;
@@ -218,30 +293,23 @@ void do_build(const char *infile, const char *outfile, int block_size)
 	corpus.flush_block();
 	dprintf("Read %zu files from %s\n", corpus.num_files, infile);
 
-	// Compress posting lists.
-	string buf;
 	size_t trigrams = 0, longest_posting_list = 0;
 	size_t bytes_used = 0;
-	unordered_map<uint32_t, string> pl;
-	for (auto &[trigram, docids] : corpus.invindex) {
-		longest_posting_list = max(longest_posting_list, docids.size());
-		trigrams += docids.size();
-
-		size_t bytes_needed = P4NENC_BOUND(docids.size());
-		if (buf.size() < bytes_needed) buf.resize(bytes_needed);
-		size_t bytes = p4nd1enc128v32(&docids[0], docids.size(), reinterpret_cast<unsigned char *>(&buf[0]));
-		pl[trigram] = string(buf.data(), bytes);
-		bytes_used += bytes;
+	for (auto &[trigram, pl_builder] : corpus.invindex) {
+		pl_builder.finish();
+		longest_posting_list = max(longest_posting_list, pl_builder.num_docids);
+		trigrams += pl_builder.num_docids;
+		bytes_used += pl_builder.encoded.size();
 	}
 	dprintf("%zu files, %zu different trigrams, %zu entries, avg len %.2f, longest %zu\n",
 		corpus.num_files, corpus.invindex.size(), trigrams, double(trigrams) / corpus.invindex.size(), longest_posting_list);
-
 	dprintf("%zu bytes used for posting lists (%.2f bits/entry)\n", bytes_used, 8 * bytes_used / double(trigrams));
+
 	//steady_clock::time_point end = steady_clock::now();
 	dprintf("Building posting lists took %.1f ms.\n\n", 1e3 * duration<float>(end - start).count());
 
 	vector<uint32_t> all_trigrams;
-	for (auto &[trigram, docids] : corpus.invindex) {
+	for (auto &[trigram, pl_builder] : corpus.invindex) {
 		all_trigrams.push_back(trigram);
 	}
 	sort(all_trigrams.begin(), all_trigrams.end());
@@ -256,27 +324,28 @@ void do_build(const char *infile, const char *outfile, int block_size)
 	// Find out where the posting lists will end.
 	uint64_t offset = sizeof(uint64_t) * 2 + 16 * all_trigrams.size();
 	uint64_t filename_index_offset = offset;
-	for (uint32_t trgm : all_trigrams) {
-		filename_index_offset += pl[trgm].size();
+	for (auto &[trigram, pl_builder] : corpus.invindex) {
+		filename_index_offset += pl_builder.encoded.size();
 	}
 	fwrite(&filename_index_offset, sizeof(filename_index_offset), 1, outfp);
 
 	size_t bytes_for_trigrams = 0, bytes_for_posting_lists = 0, bytes_for_filename_index = 0, bytes_for_filenames = 0;
-
 	for (uint32_t trgm : all_trigrams) {
 		// 16 bytes: trgm (4), number of docids (4), byte offset (8)
 		fwrite(&trgm, sizeof(trgm), 1, outfp);  // One byte wasted, but OK.
-		uint32_t num_docids = corpus.invindex[trgm].size();
+		const PostingListBuilder &pl_builder = corpus.invindex[trgm];
+		uint32_t num_docids = pl_builder.num_docids;
 		fwrite(&num_docids, sizeof(num_docids), 1, outfp);
 		fwrite(&offset, sizeof(offset), 1, outfp);
-		offset += pl[trgm].size();
+		offset += pl_builder.encoded.size();
 		bytes_for_trigrams += 16;
 	}
 
 	// Write the actual posting lists.
 	for (uint32_t trgm : all_trigrams) {
-		fwrite(pl[trgm].data(), pl[trgm].size(), 1, outfp);
-		bytes_for_posting_lists += pl[trgm].size();
+		const string &encoded = corpus.invindex[trgm].encoded;
+		fwrite(encoded.data(), encoded.size(), 1, outfp);
+		bytes_for_posting_lists += encoded.size();
 	}
 
 	// Stick an empty block at the end as sentinel.
