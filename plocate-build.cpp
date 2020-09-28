@@ -22,8 +22,10 @@
 
 using namespace std;
 using namespace std::chrono;
+
+string zstd_compress(const string &src, string *tempbuf);
 	
-static inline uint32_t read_unigram(const string &s, size_t idx)
+static inline uint32_t read_unigram(const string_view s, size_t idx)
 {
 	if (idx < s.size()) {
 		return (unsigned char)s[idx];
@@ -32,7 +34,7 @@ static inline uint32_t read_unigram(const string &s, size_t idx)
 	}
 }
 
-static inline uint32_t read_trigram(const string &s, size_t start)
+static inline uint32_t read_trigram(const string_view s, size_t start)
 {
 	return read_unigram(s, start) |
 		(read_unigram(s, start + 1) << 8) |
@@ -64,7 +66,67 @@ struct db_directory
 	uint8_t pad[4];
 };
 
-const char *handle_directory(const char *ptr, vector<string> *files)
+class Corpus {
+public:
+	Corpus(size_t block_size) : block_size(block_size) {}
+	void add_file(string filename);
+	void flush_block();
+
+	vector<string> filename_blocks;
+	unordered_map<uint32_t, vector<uint32_t>> invindex;
+	size_t num_files = 0, num_files_in_block = 0, num_blocks = 0;
+
+private:
+	string current_block;
+	string tempbuf;
+	const size_t block_size;
+};
+
+void Corpus::add_file(string filename)
+{
+	++num_files;
+	if (!current_block.empty()) {
+		current_block.push_back('\0');
+	}
+	current_block += filename;
+	if (++num_files_in_block == block_size) {
+		flush_block();
+	}
+}
+
+void Corpus::flush_block()
+{
+	if (current_block.empty()) {
+		return;
+	}
+
+	uint32_t docid = num_blocks;
+
+	// Create trigrams.
+	const char *ptr = current_block.c_str();
+	while (ptr < current_block.c_str() + current_block.size()) {
+		string_view s(ptr);
+		if (s.size() >= 3) {
+			for (size_t j = 0; j < s.size() - 2; ++j) {
+				uint32_t trgm = read_trigram(s, j);
+				vector<uint32_t> &docids = invindex[trgm];
+				if (docids.empty() || docids.back() != docid) {
+					docids.push_back(docid);
+				}
+			}
+		}
+		ptr += s.size() + 1;
+	}
+
+	// Compress and add the filename block.
+	filename_blocks.push_back(zstd_compress(current_block, &tempbuf));
+
+	current_block.clear();
+	num_files_in_block = 0;
+	++num_blocks;
+}
+
+const char *handle_directory(const char *ptr, Corpus *corpus)
 {
 	ptr += sizeof(db_directory);
 
@@ -78,11 +140,11 @@ const char *handle_directory(const char *ptr, vector<string> *files)
 		uint8_t type = *ptr++;
 		if (type == DBE_NORMAL) {
 			string filename = ptr;
-			files->push_back(dir_path + "/" + filename);
+			corpus->add_file(dir_path + "/" + filename);
 			ptr += filename.size() + 1;
 		} else if (type == DBE_DIRECTORY) {
 			string dirname = ptr;
-			files->push_back(dir_path + "/" + dirname);
+			corpus->add_file(dir_path + "/" + dirname);
 			ptr += dirname.size() + 1;
 		} else {
 			return ptr;
@@ -90,7 +152,7 @@ const char *handle_directory(const char *ptr, vector<string> *files)
 	}
 }
 
-void read_mlocate(const char *filename, vector<string> *files)
+void read_mlocate(const char *filename, Corpus *corpus)
 {
 	int fd = open(filename, O_RDONLY);
 	if (fd == -1) {
@@ -116,7 +178,7 @@ void read_mlocate(const char *filename, vector<string> *files)
 
 	const char *ptr = data + offset;
 	while (ptr < data + len) {
-		ptr = handle_directory(ptr, files);
+		ptr = handle_directory(ptr, corpus);
 	}
 
 	munmap((void *)data, len);
@@ -137,8 +199,9 @@ void do_build(const char *infile, const char *outfile, int block_size)
 {
 	//steady_clock::time_point start = steady_clock::now();
 
-	vector<string> files;
-	read_mlocate(infile, &files);
+	Corpus corpus(block_size);
+
+	read_mlocate(infile, &corpus);
 	if (false) {  // To read a plain text file.
 		FILE *fp = fopen(infile, "r");
 		while (!feof(fp)) {
@@ -148,31 +211,19 @@ void do_build(const char *infile, const char *outfile, int block_size)
 			}
 			string s(buf);
 			if (s.back() == '\n') s.pop_back();
-			files.push_back(move(s));
+			corpus.add_file(move(s));
 		}
 		fclose(fp);
 	}
-	dprintf("Read %zu files from %s\n", files.size(), infile);
-	
-	unordered_map<uint32_t, string> pl;
-	size_t trigrams = 0, longest_posting_list = 0;
-	unordered_map<uint32_t, vector<uint32_t>> invindex;
-	for (size_t i = 0; i < files.size(); ++i) {
-		uint32_t docid = i / block_size;
-		const string &s = files[i];
-		if (s.size() >= 3) {
-			for (size_t j = 0; j < s.size() - 2; ++j) {
-				uint32_t trgm = read_trigram(s, j);
-				vector<uint32_t> &docids = invindex[trgm];
-				if (docids.empty() || docids.back() != docid) {
-					docids.push_back(docid);
-				}
-			}
-		}
-	}
+	corpus.flush_block();
+	dprintf("Read %zu files from %s\n", corpus.num_files, infile);
+
+	// Compress posting lists.
 	string buf;
+	size_t trigrams = 0, longest_posting_list = 0;
 	size_t bytes_used = 0;
-	for (auto &[trigram, docids] : invindex) {
+	unordered_map<uint32_t, string> pl;
+	for (auto &[trigram, docids] : corpus.invindex) {
 		longest_posting_list = max(longest_posting_list, docids.size());
 		trigrams += docids.size();
 
@@ -183,14 +234,14 @@ void do_build(const char *infile, const char *outfile, int block_size)
 		bytes_used += bytes;
 	}
 	dprintf("%zu files, %zu different trigrams, %zu entries, avg len %.2f, longest %zu\n",
-		files.size(), invindex.size(), trigrams, double(trigrams) / invindex.size(), longest_posting_list);
+		corpus.num_files, corpus.invindex.size(), trigrams, double(trigrams) / corpus.invindex.size(), longest_posting_list);
 
 	dprintf("%zu bytes used for posting lists (%.2f bits/entry)\n", bytes_used, 8 * bytes_used / double(trigrams));
 	//steady_clock::time_point end = steady_clock::now();
 	dprintf("Building posting lists took %.1f ms.\n\n", 1e3 * duration<float>(end - start).count());
 
 	vector<uint32_t> all_trigrams;
-	for (auto &[trigram, docids] : invindex) {
+	for (auto &[trigram, docids] : corpus.invindex) {
 		all_trigrams.push_back(trigram);
 	}
 	sort(all_trigrams.begin(), all_trigrams.end());
@@ -199,7 +250,7 @@ void do_build(const char *infile, const char *outfile, int block_size)
 	FILE *outfp = fopen(outfile, "wb");
 
 	// Write the header.
-	uint64_t num_trigrams = invindex.size();  // 64 to get alignment.
+	uint64_t num_trigrams = corpus.invindex.size();  // 64 to get alignment.
 	fwrite(&num_trigrams, sizeof(num_trigrams), 1, outfp);
 
 	// Find out where the posting lists will end.
@@ -215,7 +266,7 @@ void do_build(const char *infile, const char *outfile, int block_size)
 	for (uint32_t trgm : all_trigrams) {
 		// 16 bytes: trgm (4), number of docids (4), byte offset (8)
 		fwrite(&trgm, sizeof(trgm), 1, outfp);  // One byte wasted, but OK.
-		uint32_t num_docids = invindex[trgm].size();
+		uint32_t num_docids = corpus.invindex[trgm].size();
 		fwrite(&num_docids, sizeof(num_docids), 1, outfp);
 		fwrite(&offset, sizeof(offset), 1, outfp);
 		offset += pl[trgm].size();
@@ -228,34 +279,12 @@ void do_build(const char *infile, const char *outfile, int block_size)
 		bytes_for_posting_lists += pl[trgm].size();
 	}
 
-	// Compress the filenames into blocks.
-	vector<string> filename_blocks;
-	string uncompressed_filenames;
-	int num_files_this_block = 0;
-
-	string dst, tempbuf;
-	for (string &filename : files) {
-		uncompressed_filenames += filename;
-		filename.clear();
-		if (++num_files_this_block == block_size) {
-			filename_blocks.push_back(zstd_compress(uncompressed_filenames, &tempbuf));
-			uncompressed_filenames.clear();
-			num_files_this_block = 0;
-		} else {
-			uncompressed_filenames.push_back('\0');
-		}
-	}
-	if (num_files_this_block > 0) {
-		filename_blocks.push_back(zstd_compress(uncompressed_filenames, &tempbuf));
-	}
-	files.clear();
-
 	// Stick an empty block at the end as sentinel.
-	filename_blocks.push_back("");
+	corpus.filename_blocks.push_back("");
 
 	// Write the offsets to the filenames.
-	offset = filename_index_offset + filename_blocks.size() * sizeof(offset);
-	for (const string &filename : filename_blocks) {
+	offset = filename_index_offset + corpus.filename_blocks.size() * sizeof(offset);
+	for (const string &filename : corpus.filename_blocks) {
 		fwrite(&offset, sizeof(offset), 1, outfp);
 		offset += filename.size();
 		bytes_for_filename_index += sizeof(offset);
@@ -263,7 +292,7 @@ void do_build(const char *infile, const char *outfile, int block_size)
 	}
 	
 	// Write the actual filenames.
-	for (const string &filename : filename_blocks) {
+	for (const string &filename : corpus.filename_blocks) {
 		fwrite(filename.data(), filename.size(), 1, outfp);
 	}
 
