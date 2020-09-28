@@ -74,6 +74,7 @@ public:
 	const unsigned char *
 	get_compressed_posting_list(const Trigram *trigram) const;
 	string_view get_compressed_filename_block(uint32_t docid) const;
+	size_t get_num_filename_blocks() const;
 
 private:
 	const int fd;
@@ -137,6 +138,15 @@ string_view Corpus::get_compressed_filename_block(uint32_t docid) const
 	return { compressed, compressed_size };
 }
 
+size_t Corpus::get_num_filename_blocks() const
+{
+	// The beginning of the filename blocks is the end of the filename index blocks.
+	const uint64_t *filename_offsets_end = (const uint64_t *)(data + filename_offsets[0]);
+
+	// Subtract the sentinel block.
+	return filename_offsets_end - filename_offsets - 1;
+}
+
 size_t scan_docid(const string &needle, uint32_t docid, const Corpus &corpus,
                   unordered_map<string, bool> *access_rx_cache)
 {
@@ -186,6 +196,19 @@ void do_search_file(const string &needle, const char *filename)
 	}
 
 	Corpus corpus(fd);
+
+	if (needle.size() < 3) {
+		// Too short for trigram matching. Apply brute force.
+		// (We could have searched through all trigrams that matched
+		// the pattern and done a union of them, but that's a lot of
+		// work for fairly unclear gain.)
+		unordered_map<string, bool> access_rx_cache;
+		uint32_t num_blocks = corpus.get_num_filename_blocks();
+		for (uint32_t docid = 0; docid < num_blocks; ++docid) {
+			scan_docid(needle, docid, corpus, &access_rx_cache);
+		}
+		return;
+	}
 
 	vector<const Trigram *> trigrams;
 	for (size_t i = 0; i < needle.size() - 2; ++i) {
