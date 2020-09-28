@@ -57,16 +57,6 @@ bool has_access(const char *filename, unordered_map<string, bool> *access_rx_cac
 		end = strchr(end + 1, '/');
 	}
 
-#if 0
-	// Check for rx first in the cache; if that isn't true, check R_OK uncached.
-	// This is roughly the same thing as mlocate does.	
-	auto it = access_rx_cache->find(filename);
-	if (it != access_rx_cache->end() && it->second) {
-		return true;
-	}
-
-	return access(filename, R_OK) == 0;
-#endif
 	return true;
 }
 
@@ -259,6 +249,5 @@ void do_search_file(const string &needle, const char *filename)
 
 int main(int argc, char **argv)
 {
-	//do_search_file(argv[1], "all.trgm");
 	do_search_file(argv[1], "/var/lib/mlocate/plocate.db");
 }
