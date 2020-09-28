@@ -15,8 +15,6 @@
 #include <sys/stat.h>
 #include <zstd.h>
 
-#define VINT_IN
-#include "vint.h"
 #include "vp4.h"
 
 #define P4NENC_BOUND(n) ((n+127)/128+(n+32)*sizeof(uint32_t))
