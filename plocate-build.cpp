@@ -1,23 +1,23 @@
-#include <assert.h>
-#include <stdio.h>
-#include <string.h>
-#include <algorithm>
-#include <unordered_map>
-#include <string>
-#include <vector>
-#include <chrono>
-#include <unistd.h>
-#include <fcntl.h>
-#include <sys/mman.h>
-#include <arpa/inet.h>
-#include <endian.h>
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <zstd.h>
-
 #include "vp4.h"
 
-#define P4NENC_BOUND(n) ((n+127)/128+(n+32)*sizeof(uint32_t))
+#include <algorithm>
+#include <arpa/inet.h>
+#include <assert.h>
+#include <chrono>
+#include <endian.h>
+#include <fcntl.h>
+#include <stdio.h>
+#include <string.h>
+#include <string>
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <unistd.h>
+#include <unordered_map>
+#include <vector>
+#include <zstd.h>
+
+#define P4NENC_BOUND(n) ((n + 127) / 128 + (n + 32) * sizeof(uint32_t))
 #define dprintf(...)
 //#define dprintf(...) fprintf(stderr, __VA_ARGS__);
 
@@ -25,7 +25,7 @@ using namespace std;
 using namespace std::chrono;
 
 string zstd_compress(const string &src, string *tempbuf);
-	
+
 static inline uint32_t read_unigram(const string_view s, size_t idx)
 {
 	if (idx < s.size()) {
@@ -42,16 +42,14 @@ static inline uint32_t read_trigram(const string_view s, size_t start)
 		(read_unigram(s, start + 2) << 16);
 }
 
-enum
-{
-	DBE_NORMAL          = 0,    /* A non-directory file */
-	DBE_DIRECTORY       = 1,    /* A directory */
-	DBE_END             = 2   /* End of directory contents; contains no name */
+enum {
+	DBE_NORMAL = 0, /* A non-directory file */
+	DBE_DIRECTORY = 1, /* A directory */
+	DBE_END = 2 /* End of directory contents; contains no name */
 };
 
 // From mlocate.
-struct db_header
-{
+struct db_header {
 	uint8_t magic[8];
 	uint32_t conf_size;
 	uint8_t version;
@@ -60,8 +58,7 @@ struct db_header
 };
 
 // From mlocate.
-struct db_directory
-{
+struct db_directory {
 	uint64_t time_sec;
 	uint32_t time_nsec;
 	uint8_t pad[4];
@@ -143,7 +140,8 @@ void PostingListBuilder::write_header(uint32_t docid)
 
 class Corpus {
 public:
-	Corpus(size_t block_size) : block_size(block_size) {}
+	Corpus(size_t block_size)
+		: block_size(block_size) {}
 	void add_file(string filename);
 	void flush_block();
 
@@ -207,8 +205,8 @@ const char *handle_directory(const char *ptr, Corpus *corpus)
 	if (dir_path == "/") {
 		dir_path = "";
 	}
-		
-	for ( ;; ) {
+
+	for (;;) {
 		uint8_t type = *ptr++;
 		if (type == DBE_NORMAL) {
 			string filename = ptr;
@@ -282,7 +280,8 @@ void do_build(const char *infile, const char *outfile, int block_size)
 				break;
 			}
 			string s(buf);
-			if (s.back() == '\n') s.pop_back();
+			if (s.back() == '\n')
+				s.pop_back();
 			corpus.add_file(move(s));
 		}
 		fclose(fp);
@@ -299,7 +298,7 @@ void do_build(const char *infile, const char *outfile, int block_size)
 		bytes_used += pl_builder.encoded.size();
 	}
 	dprintf("%zu files, %zu different trigrams, %zu entries, avg len %.2f, longest %zu\n",
-		corpus.num_files, corpus.invindex.size(), trigrams, double(trigrams) / corpus.invindex.size(), longest_posting_list);
+	        corpus.num_files, corpus.invindex.size(), trigrams, double(trigrams) / corpus.invindex.size(), longest_posting_list);
 	dprintf("%zu bytes used for posting lists (%.2f bits/entry)\n", bytes_used, 8 * bytes_used / double(trigrams));
 
 	//steady_clock::time_point end = steady_clock::now();
@@ -356,7 +355,7 @@ void do_build(const char *infile, const char *outfile, int block_size)
 		bytes_for_filename_index += sizeof(offset);
 		bytes_for_filenames += filename.size();
 	}
-	
+
 	// Write the actual filenames.
 	for (const string &filename : corpus.filename_blocks) {
 		fwrite(filename.data(), filename.size(), 1, outfp);
