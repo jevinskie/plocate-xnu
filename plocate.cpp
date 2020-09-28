@@ -76,16 +76,82 @@ struct Trigram {
 	uint64_t offset;
 };
 
-size_t scan_docid(const string &needle, uint32_t docid, const char *data, const uint64_t *filename_offsets, unordered_map<string, bool> *access_rx_cache)
+class Corpus {
+public:
+	Corpus(int fd);
+	~Corpus();
+	const Trigram *find_trigram(uint32_t trgm) const;
+	const unsigned char *get_compressed_posting_list(const Trigram *trigram) const;
+	string_view get_compressed_filename_block(uint32_t docid) const;
+
+private:
+	const int fd;
+	off_t len;
+	const char *data;
+	const uint64_t *filename_offsets;
+	const Trigram *trgm_begin, *trgm_end;
+};
+
+Corpus::Corpus(int fd)
+	: fd(fd)
+{
+	len = lseek(fd, 0, SEEK_END);
+	if (len == -1) {
+		perror("lseek");
+		exit(1);
+	}
+	data = (char *)mmap(nullptr, len, PROT_READ, MAP_SHARED, fd, /*offset=*/0);
+	if (data == MAP_FAILED) {
+		perror("mmap");
+		exit(1);
+	}
+
+	uint64_t num_trigrams = *(const uint64_t *)data;
+	uint64_t filename_index_offset = *(const uint64_t *)(data + sizeof(uint64_t));
+	filename_offsets = (const uint64_t *)(data + filename_index_offset);
+
+	trgm_begin = (Trigram *)(data + sizeof(uint64_t) * 2);
+	trgm_end = trgm_begin + num_trigrams;
+}
+
+Corpus::~Corpus()
+{
+	munmap((void *)data, len);
+	close(fd);
+}
+
+const Trigram *Corpus::find_trigram(uint32_t trgm) const
+{
+	const Trigram *trgmptr = lower_bound(trgm_begin, trgm_end, trgm, [](const Trigram &trgm, uint32_t t) {
+		return trgm.trgm < t;
+	});
+	if (trgmptr == trgm_end || trgmptr->trgm != trgm) {
+		return nullptr;
+	}
+	return trgmptr;
+}
+
+const unsigned char *Corpus::get_compressed_posting_list(const Trigram *trgmptr) const
+{
+	return reinterpret_cast<const unsigned char *>(data + trgmptr->offset);
+}
+
+string_view Corpus::get_compressed_filename_block(uint32_t docid) const
 {
 	const char *compressed = (const char *)(data + filename_offsets[docid]);
 	size_t compressed_size = filename_offsets[docid + 1] - filename_offsets[docid];  // Allowed we have a sentinel block at the end.
+	return {compressed, compressed_size};
+}
+
+size_t scan_docid(const string &needle, uint32_t docid, const Corpus &corpus, unordered_map<string, bool> *access_rx_cache)
+{
+	string_view compressed = corpus.get_compressed_filename_block(docid);
 	size_t matched = 0;
 
 	string block;
-	block.resize(ZSTD_getFrameContentSize(compressed, compressed_size) + 1);
+	block.resize(ZSTD_getFrameContentSize(compressed.data(), compressed.size()) + 1);
 
-	ZSTD_decompress(&block[0], block.size(), compressed, compressed_size);
+	ZSTD_decompress(&block[0], block.size(), compressed.data(), compressed.size());
 	block[block.size() - 1] = '\0';
 
 	for (const char *filename = block.data();
@@ -122,32 +188,14 @@ void do_search_file(const string &needle, const char *filename)
 		return;
 	}
 
-	off_t len = lseek(fd, 0, SEEK_END);
-	if (len == -1) {
-		perror("lseek");
-		exit(1);
-	}
-	const char *data = (char *)mmap(nullptr, len, PROT_READ, MAP_SHARED, fd, /*offset=*/0);
-	if (data == MAP_FAILED) {
-		perror("mmap");
-		exit(1);
-	}
-	uint64_t num_trigrams = *(const uint64_t *)data;
-	uint64_t filename_index_offset = *(const uint64_t *)(data + sizeof(uint64_t));
-
-	const Trigram *trgm_begin = (Trigram *)(data + sizeof(uint64_t) * 2);
-	const Trigram *trgm_end = trgm_begin + num_trigrams;
+	Corpus corpus(fd);
 
 	vector<const Trigram *> trigrams;
 	for (size_t i = 0; i < needle.size() - 2; ++i) {
 		uint32_t trgm = read_trigram(needle, i);
-		const Trigram *trgmptr = lower_bound(trgm_begin, trgm_end, trgm, [](const Trigram &trgm, uint32_t t) {
-			return trgm.trgm < t;
-		});
-		if (trgmptr == trgm_end || trgmptr->trgm != trgm) {
+		const Trigram *trgmptr = corpus.find_trigram(trgm);
+		if (trgmptr == nullptr) {
 			dprintf("trigram %06x isn't found, we abort the search\n", trgm);
-			munmap((void *)data, len);
-			close(fd);
 			return;
 		}
 		trigrams.push_back(trgmptr);
@@ -165,10 +213,10 @@ void do_search_file(const string &needle, const char *filename)
 	for (const Trigram *trgmptr : trigrams) {
 		//uint32_t trgm = trgmptr->trgm;
 		size_t num = trgmptr->num_docids;
-		unsigned char *pldata = (unsigned char *)(data + trgmptr->offset);
+		const unsigned char *pldata = corpus.get_compressed_posting_list(trgmptr);
 		if (in1.empty()) {
 			in1.resize(num + 128);
-			p4nd1dec128v32((unsigned char *)pldata, num, &in1[0]);
+			p4nd1dec128v32(const_cast<unsigned char *>(pldata), num, &in1[0]);
 			in1.resize(num);
 			dprintf("trigram '%c%c%c' decoded to %zu entries\n", trgm & 0xff, (trgm >> 8) & 0xff, (trgm >> 16) & 0xff, num);
 		} else {
@@ -181,7 +229,7 @@ void do_search_file(const string &needle, const char *filename)
 			if (in2.size() < num + 128) {
 				in2.resize(num + 128);
 			}
-			p4nd1dec128v32((unsigned char *)pldata, num, &in2[0]);
+			p4nd1dec128v32(const_cast<unsigned char *>(pldata), num, &in2[0]);
 
 			out.clear();
 			set_intersection(in1.begin(), in1.end(), in2.begin(), in2.begin() + num, back_inserter(out));
@@ -200,17 +248,13 @@ void do_search_file(const string &needle, const char *filename)
 
 	unordered_map<string, bool> access_rx_cache;
 
-	const uint64_t *filename_offsets = (const uint64_t *)(data + filename_index_offset);
 	int matched = 0;
 	for (uint32_t docid : in1) {
-		matched += scan_docid(needle, docid, data, filename_offsets, &access_rx_cache);
+		matched += scan_docid(needle, docid, corpus, &access_rx_cache);
 	}
 	end = steady_clock::now();
 	dprintf("Done in %.1f ms, found %d matches.\n",
 		1e3 * duration<float>(end - start).count(), matched);
-
-	munmap((void *)data, len);
-	close(fd);
 }
 
 int main(int argc, char **argv)
