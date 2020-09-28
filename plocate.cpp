@@ -76,6 +76,32 @@ struct Trigram {
 	uint64_t offset;
 };
 
+size_t scan_docid(const string &needle, uint32_t docid, const char *data, const uint64_t *filename_offsets, unordered_map<string, bool> *access_rx_cache)
+{
+	const char *compressed = (const char *)(data + filename_offsets[docid]);
+	size_t compressed_size = filename_offsets[docid + 1] - filename_offsets[docid];  // Allowed we have a sentinel block at the end.
+	size_t matched = 0;
+
+	string block;
+	block.resize(ZSTD_getFrameContentSize(compressed, compressed_size) + 1);
+
+	ZSTD_decompress(&block[0], block.size(), compressed, compressed_size);
+	block[block.size() - 1] = '\0';
+
+	for (const char *filename = block.data();
+			filename != block.data() + block.size();
+			filename += strlen(filename) + 1) {
+		if (strstr(filename, needle.c_str()) == nullptr) {
+			continue;
+		}
+		if (has_access(filename, access_rx_cache)) {
+			++matched;
+			printf("%s\n", filename);
+		}
+	}
+	return matched;
+}
+
 void do_search_file(const string &needle, const char *filename)
 {
 	int fd = open(filename, O_RDONLY);
@@ -177,26 +203,7 @@ void do_search_file(const string &needle, const char *filename)
 	const uint64_t *filename_offsets = (const uint64_t *)(data + filename_index_offset);
 	int matched = 0;
 	for (uint32_t docid : in1) {
-		const char *compressed = (const char *)(data + filename_offsets[docid]);
-		size_t compressed_size = filename_offsets[docid + 1] - filename_offsets[docid];  // Allowed we have a sentinel block at the end.
-
-		string block;
-		block.resize(ZSTD_getFrameContentSize(compressed, compressed_size) + 1);
-
-		ZSTD_decompress(&block[0], block.size(), compressed, compressed_size);
-		block[block.size() - 1] = '\0';
-
-		for (const char *filename = block.data();
-		     filename != block.data() + block.size();
-		     filename += strlen(filename) + 1) {
-			if (strstr(filename, needle.c_str()) == nullptr) {
-				continue;
-			}
-			if (has_access(filename, &access_rx_cache)) {
-				++matched;
-				printf("%s\n", filename);
-			}
-		}
+		matched += scan_docid(needle, docid, data, filename_offsets, &access_rx_cache);
 	}
 	end = steady_clock::now();
 	dprintf("Done in %.1f ms, found %d matches.\n",
