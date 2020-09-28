@@ -158,19 +158,21 @@ void do_build(const char *infile, const char *outfile, int block_size)
 	size_t trigrams = 0, longest_posting_list = 0;
 	unordered_map<uint32_t, vector<uint32_t>> invindex;
 	for (size_t i = 0; i < files.size(); ++i) {
+		uint32_t docid = i / block_size;
 		const string &s = files[i];
 		if (s.size() >= 3) {
 			for (size_t j = 0; j < s.size() - 2; ++j) {
 				uint32_t trgm = read_trigram(s, j);
-				invindex[trgm].push_back(i / block_size);
+				vector<uint32_t> &docids = invindex[trgm];
+				if (docids.empty() || docids.back() != docid) {
+					docids.push_back(docid);
+				}
 			}
 		}
 	}
 	string buf;
 	size_t bytes_used = 0;
 	for (auto &[trigram, docids] : invindex) {
-		auto last = unique(docids.begin(), docids.end());
-		docids.erase(last, docids.end());
 		longest_posting_list = max(longest_posting_list, docids.size());
 		trigrams += docids.size();
 
