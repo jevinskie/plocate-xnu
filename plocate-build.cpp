@@ -123,14 +123,14 @@ void read_mlocate(const char *filename, vector<string> *files)
 	close(fd);
 }
 
-string zstd_compress(const string &src)
+string zstd_compress(const string &src, string *tempbuf)
 {
 	size_t max_size = ZSTD_compressBound(src.size());
-	string dst;
-	dst.resize(max_size);
-	size_t size = ZSTD_compress(&dst[0], max_size, src.data(), src.size(), /*level=*/6);
-	dst.resize(size);
-	return dst;
+	if (tempbuf->size() < max_size) {
+		tempbuf->resize(max_size);
+	}
+	size_t size = ZSTD_compress(&(*tempbuf)[0], max_size, src.data(), src.size(), /*level=*/6);
+	return string(tempbuf->data(), size);
 }
 
 void do_build(const char *infile, const char *outfile, int block_size)
@@ -233,13 +233,12 @@ void do_build(const char *infile, const char *outfile, int block_size)
 	string uncompressed_filenames;
 	int num_files_this_block = 0;
 
-	string dst;
-
+	string dst, tempbuf;
 	for (string &filename : files) {
 		uncompressed_filenames += filename;
 		filename.clear();
 		if (++num_files_this_block == block_size) {
-			filename_blocks.push_back(zstd_compress(uncompressed_filenames));
+			filename_blocks.push_back(zstd_compress(uncompressed_filenames, &tempbuf));
 			uncompressed_filenames.clear();
 			num_files_this_block = 0;
 		} else {
@@ -247,7 +246,7 @@ void do_build(const char *infile, const char *outfile, int block_size)
 		}
 	}
 	if (num_files_this_block > 0) {
-		filename_blocks.push_back(zstd_compress(uncompressed_filenames));
+		filename_blocks.push_back(zstd_compress(uncompressed_filenames, &tempbuf));
 	}
 	files.clear();
 
