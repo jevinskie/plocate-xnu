@@ -24,6 +24,9 @@ using namespace std::chrono;
 #define dprintf(...)
 //#define dprintf(...) fprintf(stderr, __VA_ARGS__);
 
+const char *dbpath = "/var/lib/mlocate/plocate.db";
+bool print_nul = false;
+
 class Serializer {
 public:
 	void do_or_wait(int seq, function<void()> cb);
@@ -218,7 +221,11 @@ size_t scan_file_block(const vector<string> &needles, string_view compressed,
 		}
 		if (found && has_access(filename, access_rx_cache)) {
 			++matched;
-			printf("%s\n", filename);
+			if (print_nul) {
+				printf("%s%c", filename, 0);
+			} else {
+				printf("%s\n", filename);
+			}
 		}
 	}
 	return matched;
@@ -390,14 +397,13 @@ void do_search_file(const vector<string> &needles, const char *filename)
 	        1e3 * duration<float>(steady_clock::now() - start).count(), matched);
 }
 
-const char *dbpath = "/var/lib/mlocate/plocate.db";
-
 void usage()
 {
 	printf("Usage: slocate [OPTION]... PATTERN...\n");
 	printf("  -d, --database DBPATH  use DBPATH instead of default database (which is\n");
 	printf("                         %s)\n", dbpath);
 	printf("  -h, --help             print this help\n");
+	printf("  -0, --null             separate entries with NUL on output\n");
 }
 
 int main(int argc, char **argv)
@@ -405,12 +411,13 @@ int main(int argc, char **argv)
 	static const struct option long_options[] = {
 		{ "help", no_argument, 0, 'h' },
 		{ "database", required_argument, 0, 'd' },
+		{ "null", no_argument, 0, '0' },
 		{ 0, 0, 0, 0 }
 	};
 
 	for (;;) {
 		int option_index = 0;
-		int c = getopt_long(argc, argv, "d:h:", long_options, &option_index);
+		int c = getopt_long(argc, argv, "d:h0", long_options, &option_index);
 		if (c == -1) {
 			break;
 		}
@@ -421,6 +428,9 @@ int main(int argc, char **argv)
 		case 'h':
 			usage();
 			exit(0);
+		case '0':
+			print_nul = true;
+			break;
 		}
 	}
 
