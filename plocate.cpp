@@ -339,6 +339,7 @@ void do_search_file(const string &needle, const char *filename)
 				break;
 		}
 		engine.submit_read(fd, len, trgmptr.offset, [trgmptr, len, &done, &in1, &in2, &out](string s) {
+			if (done) return;
 			uint32_t trgm __attribute__((unused)) = trgmptr.trgm;
 			size_t num = trgmptr.num_docids;
 			unsigned char *pldata = reinterpret_cast<unsigned char *>(s.data());
@@ -369,6 +370,9 @@ void do_search_file(const string &needle, const char *filename)
 		});
 	}
 	engine.finish();
+	if (done) {
+		return;
+	}
 	dprintf("Intersection done after %.1f ms. Doing final verification and printing:\n",
 	        1e3 * duration<float>(steady_clock::now() - start).count());
 
