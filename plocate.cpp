@@ -184,7 +184,7 @@ size_t Corpus::get_num_filename_blocks() const
 	return (end - hdr.filename_index_offset_bytes) / sizeof(uint64_t) - 1;
 }
 
-size_t scan_file_block(const string &needle, string_view compressed,
+size_t scan_file_block(const vector<string> &needles, string_view compressed,
                        unordered_map<string, bool> *access_rx_cache)
 {
 	size_t matched = 0;
@@ -209,10 +209,14 @@ size_t scan_file_block(const string &needle, string_view compressed,
 	for (const char *filename = block.data();
 	     filename != block.data() + block.size();
 	     filename += strlen(filename) + 1) {
-		if (strstr(filename, needle.c_str()) == nullptr) {
-			continue;
+		bool found = true;
+		for (const string &needle : needles) {
+			if (strstr(filename, needle.c_str()) == nullptr) {
+				found = false;
+				break;
+			}
 		}
-		if (has_access(filename, access_rx_cache)) {
+		if (found && has_access(filename, access_rx_cache)) {
 			++matched;
 			printf("%s\n", filename);
 		}
@@ -220,16 +224,16 @@ size_t scan_file_block(const string &needle, string_view compressed,
 	return matched;
 }
 
-size_t scan_docids(const string &needle, const vector<uint32_t> &docids, const Corpus &corpus, IOUringEngine *engine)
+size_t scan_docids(const vector<string> &needles, const vector<uint32_t> &docids, const Corpus &corpus, IOUringEngine *engine)
 {
 	Serializer docids_in_order;
 	unordered_map<string, bool> access_rx_cache;
 	size_t matched = 0;
 	for (size_t i = 0; i < docids.size(); ++i) {
 		uint32_t docid = docids[i];
-		corpus.get_compressed_filename_block(docid, [i, &matched, &needle, &access_rx_cache, &docids_in_order](string compressed) {
-			docids_in_order.do_or_wait(i, [&matched, &needle, compressed{ move(compressed) }, &access_rx_cache] {
-				matched += scan_file_block(needle, compressed, &access_rx_cache);
+		corpus.get_compressed_filename_block(docid, [i, &matched, &needles, &access_rx_cache, &docids_in_order](string compressed) {
+			docids_in_order.do_or_wait(i, [&matched, &needles, compressed{ move(compressed) }, &access_rx_cache] {
+				matched += scan_file_block(needles, compressed, &access_rx_cache);
 			});
 		});
 	}
@@ -240,7 +244,7 @@ size_t scan_docids(const string &needle, const vector<uint32_t> &docids, const C
 // We do this sequentially, as it's faster than scattering
 // a lot of I/O through io_uring and hoping the kernel will
 // coalesce it plus readahead for us.
-void scan_all_docids(const string &needle, int fd, const Corpus &corpus, IOUringEngine *engine)
+void scan_all_docids(const vector<string> &needles, int fd, const Corpus &corpus, IOUringEngine *engine)
 {
 	unordered_map<string, bool> access_rx_cache;
 	uint32_t num_blocks = corpus.get_num_filename_blocks();
@@ -258,12 +262,12 @@ void scan_all_docids(const string &needle, int fd, const Corpus &corpus, IOUring
 		for (uint32_t docid = io_docid; docid < last_docid; ++docid) {
 			size_t relative_offset = offsets[docid] - offsets[io_docid];
 			size_t len = offsets[docid + 1] - offsets[docid];
-			scan_file_block(needle, { &compressed[relative_offset], len }, &access_rx_cache);
+			scan_file_block(needles, { &compressed[relative_offset], len }, &access_rx_cache);
 		}
 	}
 }
 
-void do_search_file(const string &needle, const char *filename)
+void do_search_file(const vector<string> &needles, const char *filename)
 {
 	int fd = open(filename, O_RDONLY);
 	if (fd == -1) {
@@ -287,29 +291,31 @@ void do_search_file(const string &needle, const char *filename)
 	Corpus corpus(fd, &engine);
 	dprintf("Corpus init done after %.1f ms.\n", 1e3 * duration<float>(steady_clock::now() - start).count());
 
-	if (needle.size() < 3) {
-		// Too short for trigram matching. Apply brute force.
-		// (We could have searched through all trigrams that matched
-		// the pattern and done a union of them, but that's a lot of
-		// work for fairly unclear gain.)
-		scan_all_docids(needle, fd, corpus, &engine);
-		return;
-	}
-
 	vector<pair<Trigram, size_t>> trigrams;
-	for (size_t i = 0; i < needle.size() - 2; ++i) {
-		uint32_t trgm = read_trigram(needle, i);
-		corpus.find_trigram(trgm, [trgm, &trigrams](const Trigram *trgmptr, size_t len) {
-			if (trgmptr == nullptr) {
-				dprintf("trigram %06x isn't found, we abort the search\n", trgm);
-				return;
-			}
-			trigrams.emplace_back(*trgmptr, len);
-		});
+	for (const string &needle : needles) {
+		if (needle.size() < 3) continue;
+		for (size_t i = 0; i < needle.size() - 2; ++i) {
+			uint32_t trgm = read_trigram(needle, i);
+			corpus.find_trigram(trgm, [trgm, &trigrams](const Trigram *trgmptr, size_t len) {
+				if (trgmptr == nullptr) {
+					dprintf("trigram %06x isn't found, we abort the search\n", trgm);
+					return;
+				}
+				trigrams.emplace_back(*trgmptr, len);
+			});
+		}
 	}
 	engine.finish();
 	dprintf("Hashtable lookups done after %.1f ms.\n", 1e3 * duration<float>(steady_clock::now() - start).count());
 
+	if (trigrams.empty()) {
+		// Too short for trigram matching. Apply brute force.
+		// (We could have searched through all trigrams that matched
+		// the pattern and done a union of them, but that's a lot of
+		// work for fairly unclear gain.)
+		scan_all_docids(needles, fd, corpus, &engine);
+		return;
+	}
 	sort(trigrams.begin(), trigrams.end());
 	{
 		auto last = unique(trigrams.begin(), trigrams.end());
@@ -379,7 +385,7 @@ void do_search_file(const string &needle, const char *filename)
 	dprintf("Intersection done after %.1f ms. Doing final verification and printing:\n",
 	        1e3 * duration<float>(steady_clock::now() - start).count());
 
-	size_t matched __attribute__((unused)) = scan_docids(needle, in1, corpus, &engine);
+	size_t matched __attribute__((unused)) = scan_docids(needles, in1, corpus, &engine);
 	dprintf("Done in %.1f ms, found %zu matches.\n",
 	        1e3 * duration<float>(steady_clock::now() - start).count(), matched);
 }
@@ -388,7 +394,7 @@ const char *dbpath = "/var/lib/mlocate/plocate.db";
 
 void usage()
 {
-	printf("Usage: slocate [OPTION]... PATTERN\n");
+	printf("Usage: slocate [OPTION]... PATTERN...\n");
 	printf("  -d, --database DBPATH  use DBPATH instead of default database (which is\n");
 	printf("                         %s)\n", dbpath);
 	printf("  -h, --help             print this help\n");
@@ -418,9 +424,13 @@ int main(int argc, char **argv)
 		}
 	}
 
-	if (optind == argc) {
+	vector<string> needles;
+	for (int i = optind; i < argc; ++i) {
+		needles.push_back(argv[i]);
+	}
+	if (needles.empty()) {
 		fprintf(stderr, "slocate: no pattern to search for specified\n");
 		exit(0);
 	}
-	do_search_file(argv[optind], dbpath);
+	do_search_file(needles, dbpath);
 }
