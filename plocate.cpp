@@ -320,7 +320,6 @@ void do_search_file(const string &needle, const char *filename)
 	vector<pair<Trigram, size_t>> trigrams;
 	for (size_t i = 0; i < needle.size() - 2; ++i) {
 		uint32_t trgm = read_trigram(needle, i);
-		pair<uint32_t, uint32_t> range{ 0, corpus.num_trigrams - 1 };
 		corpus.find_trigram(trgm, [trgm, &trigrams](const Trigram *trgmptr, size_t len) {
 			if (trgmptr == nullptr) {
 				dprintf("trigram %06x isn't found, we abort the search\n", trgm);
