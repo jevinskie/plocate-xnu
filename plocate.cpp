@@ -432,6 +432,8 @@ int main(int argc, char **argv)
 		case '0':
 			print_nul = true;
 			break;
+		default:
+			exit(1);
 		}
 	}
 
