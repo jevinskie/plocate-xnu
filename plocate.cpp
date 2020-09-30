@@ -14,8 +14,6 @@
 #include <vector>
 #include <zstd.h>
 
-#define P4NENC_BOUND(n) ((n + 127) / 128 + (n + 32) * sizeof(uint32_t))
-
 using namespace std;
 using namespace std::chrono;
 
