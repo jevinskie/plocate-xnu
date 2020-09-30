@@ -399,6 +399,7 @@ void do_search_file(const vector<string> &needles, const char *filename)
 
 void usage()
 {
+	// The help text comes from mlocate.
 	printf("Usage: slocate [OPTION]... PATTERN...\n");
 	printf("  -d, --database DBPATH  use DBPATH instead of default database (which is\n");
 	printf("                         %s)\n", dbpath);
