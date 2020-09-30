@@ -210,12 +210,21 @@ size_t scan_file_block(const string &needle, string_view compressed,
 {
 	size_t matched = 0;
 
-	string block;
-	block.resize(ZSTD_getFrameContentSize(compressed.data(), compressed.size()) +
-	             1);
+	unsigned long long uncompressed_len = ZSTD_getFrameContentSize(compressed.data(), compressed.size());
+	if (uncompressed_len == ZSTD_CONTENTSIZE_UNKNOWN || uncompressed_len == ZSTD_CONTENTSIZE_ERROR) {
+		fprintf(stderr, "ZSTD_getFrameContentSize() failed\n");
+		exit(1);
+	}
 
-	ZSTD_decompress(&block[0], block.size(), compressed.data(),
+	string block;
+	block.resize(uncompressed_len + 1);
+
+	size_t err = ZSTD_decompress(&block[0], block.size(), compressed.data(),
 	                compressed.size());
+	if (ZSTD_isError(err)) {
+		fprintf(stderr, "ZSTD_decompress(): %s\n", ZSTD_getErrorName(err));
+		exit(1);
+	}
 	block[block.size() - 1] = '\0';
 
 	for (const char *filename = block.data();
