@@ -8,6 +8,7 @@
 #include <endian.h>
 #include <fcntl.h>
 #include <functional>
+#include <getopt.h>
 #include <memory>
 #include <stdio.h>
 #include <string.h>
@@ -383,7 +384,43 @@ void do_search_file(const string &needle, const char *filename)
 	        1e3 * duration<float>(steady_clock::now() - start).count(), matched);
 }
 
+const char *dbpath = "/var/lib/mlocate/plocate.db";
+
+void usage()
+{
+	printf("Usage: slocate [OPTION]... PATTERN\n");
+	printf("  -d, --database DBPATH  use DBPATH instead of default database (which is\n");
+	printf("                         %s)\n", dbpath);
+	printf("  -h, --help             print this help\n");
+}
+
 int main(int argc, char **argv)
 {
-	do_search_file(argv[1], "/var/lib/mlocate/plocate.db");
+	static const struct option long_options[] = {
+		{ "help", no_argument, 0, 'h' },
+		{ "database", required_argument, 0, 'd' },
+		{ 0, 0, 0, 0 }
+	};
+
+	for (;;) {
+		int option_index = 0;
+		int c = getopt_long(argc, argv, "d:h:", long_options, &option_index);
+		if (c == -1) {
+			break;
+		}
+		switch (c) {
+		case 'd':
+			dbpath = strdup(optarg);
+			break;
+		case 'h':
+			usage();
+			exit(0);
+		}
+	}
+
+	if (optind == argc) {
+		fprintf(stderr, "slocate: no pattern to search for specified\n");
+		exit(0);
+	}
+	do_search_file(argv[optind], dbpath);
 }
