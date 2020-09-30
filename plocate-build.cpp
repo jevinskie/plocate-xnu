@@ -6,6 +6,8 @@
 #include <chrono>
 #include <endian.h>
 #include <fcntl.h>
+#include <math.h>
+#include <memory>
 #include <stdio.h>
 #include <string.h>
 #include <string>
@@ -16,6 +18,8 @@
 #include <unordered_map>
 #include <vector>
 #include <zstd.h>
+
+#include "db.h"
 
 #define P4NENC_BOUND(n) ((n + 127) / 128 + (n + 32) * sizeof(uint32_t))
 #define dprintf(...)
@@ -265,6 +269,63 @@ string zstd_compress(const string &src, string *tempbuf)
 	return string(tempbuf->data(), size);
 }
 
+bool is_prime(uint32_t x)
+{
+	if ((x % 2) == 0 || (x % 3) == 0) {
+		return false;
+	}
+	uint32_t limit = ceil(sqrt(x));
+	for (uint32_t factor = 5; factor <= limit; ++factor) {
+		if ((x % factor) == 0) {
+			return false;
+		}
+	}
+	return true;
+}
+
+uint32_t next_prime(uint32_t x)
+{
+	if ((x % 2) == 0) {
+		++x;
+	}
+	while (!is_prime(x)) {
+		x += 2;
+	}
+	return x;
+}
+
+unique_ptr<Trigram[]> create_hashtable(const Corpus &corpus, const vector<uint32_t> &all_trigrams, uint32_t ht_size, uint32_t num_overflow_slots)
+{
+	unique_ptr<Trigram[]> ht(new Trigram[ht_size + num_overflow_slots + 1]);  // 1 for the sentinel element at the end.
+	for (unsigned i = 0; i < ht_size + num_overflow_slots + 1; ++i) {
+		ht[i].trgm = uint32_t(-1);
+		ht[i].num_docids = 0;
+		ht[i].offset = 0;
+	}
+	for (uint32_t trgm : all_trigrams) {
+		// We don't know offset yet, so set it to zero.
+		Trigram to_insert{trgm, uint32_t(corpus.invindex.find(trgm)->second.num_docids), 0};
+
+		uint32_t bucket = hash_trigram(trgm, ht_size);
+		unsigned distance = 0;
+		while (ht[bucket].num_docids != 0) {
+			// Robin Hood hashing; reduces the longest distance by a lot.
+			unsigned other_distance = bucket - hash_trigram(ht[bucket].trgm, ht_size);
+			if (distance > other_distance) {
+				swap(to_insert, ht[bucket]);
+				distance = other_distance;
+			}
+
+			++bucket, ++distance;
+			if (distance > num_overflow_slots) {
+				return nullptr;
+			}
+		}
+		ht[bucket] = to_insert;
+	}
+	return ht;
+}
+
 void do_build(const char *infile, const char *outfile, int block_size)
 {
 	steady_clock::time_point start __attribute__((unused)) = steady_clock::now();
@@ -303,42 +364,64 @@ void do_build(const char *infile, const char *outfile, int block_size)
 
 	dprintf("Building posting lists took %.1f ms.\n\n", 1e3 * duration<float>(steady_clock::now() - start).count());
 
+	// Sort the trigrams, mostly to get a consistent result every time
+	// (the hash table will put things in random order anyway).
 	vector<uint32_t> all_trigrams;
 	for (auto &[trigram, pl_builder] : corpus.invindex) {
 		all_trigrams.push_back(trigram);
 	}
 	sort(all_trigrams.begin(), all_trigrams.end());
 
+	unique_ptr<Trigram[]> hashtable;
+	uint32_t ht_size = next_prime(all_trigrams.size());
+	constexpr unsigned num_overflow_slots = 16;
+	for ( ;; ) {
+		hashtable = create_hashtable(corpus, all_trigrams, ht_size, num_overflow_slots);
+		if (hashtable == nullptr) {
+			dprintf("Failed creating hash table of size %u, increasing by 5%% and trying again.\n", ht_size);
+			ht_size = next_prime(ht_size * 1.05);
+		} else {
+			dprintf("Created hash table of size %u.\n\n", ht_size);
+			break;
+		}
+	}
+
 	umask(0027);
 	FILE *outfp = fopen(outfile, "wb");
 
-	// Write the header.
-	uint64_t num_trigrams = corpus.invindex.size();  // 64 to get alignment.
-	fwrite(&num_trigrams, sizeof(num_trigrams), 1, outfp);
+	// Find the offsets for each posting list.
+	size_t bytes_for_hashtable = (ht_size + num_overflow_slots + 1) * sizeof(Trigram);
+	uint64_t offset = sizeof(Header) + bytes_for_hashtable;
+	for (unsigned i = 0; i < ht_size + num_overflow_slots + 1; ++i) {
+		hashtable[i].offset = offset;  // Needs to be there even for empty slots.
+		if (hashtable[i].num_docids == 0) {
+			continue;
+		}
 
-	// Find out where the posting lists will end.
-	uint64_t offset = sizeof(uint64_t) * 2 + 16 * all_trigrams.size();
-	uint64_t filename_index_offset = offset;
-	for (auto &[trigram, pl_builder] : corpus.invindex) {
-		filename_index_offset += pl_builder.encoded.size();
-	}
-	fwrite(&filename_index_offset, sizeof(filename_index_offset), 1, outfp);
-
-	size_t bytes_for_trigrams = 0, bytes_for_posting_lists = 0, bytes_for_filename_index = 0, bytes_for_filenames = 0;
-	for (uint32_t trgm : all_trigrams) {
-		// 16 bytes: trgm (4), number of docids (4), byte offset (8)
-		fwrite(&trgm, sizeof(trgm), 1, outfp);  // One byte wasted, but OK.
-		const PostingListBuilder &pl_builder = corpus.invindex[trgm];
-		uint32_t num_docids = pl_builder.num_docids;
-		fwrite(&num_docids, sizeof(num_docids), 1, outfp);
-		fwrite(&offset, sizeof(offset), 1, outfp);
+		const PostingListBuilder &pl_builder = corpus.invindex[hashtable[i].trgm];
 		offset += pl_builder.encoded.size();
-		bytes_for_trigrams += 16;
 	}
+
+	// Write the header.
+	Header hdr;
+	memcpy(hdr.magic, "\0plocate", 8);
+	hdr.version = 0;
+	hdr.hashtable_size = ht_size;
+	hdr.extra_ht_slots = num_overflow_slots;
+	hdr.hash_table_offset_bytes = sizeof(hdr);  // This member is just there for flexibility.
+	hdr.filename_index_offset_bytes = offset;
+	fwrite(&hdr, sizeof(hdr), 1, outfp);
+
+	// Write the hash table.
+	fwrite(hashtable.get(), ht_size + num_overflow_slots + 1, sizeof(Trigram), outfp);
 
 	// Write the actual posting lists.
-	for (uint32_t trgm : all_trigrams) {
-		const string &encoded = corpus.invindex[trgm].encoded;
+	size_t bytes_for_posting_lists = 0;
+	for (unsigned i = 0; i < ht_size + num_overflow_slots + 1; ++i) {
+		if (hashtable[i].num_docids == 0) {
+			continue;
+		}
+		const string &encoded = corpus.invindex[hashtable[i].trgm].encoded;
 		fwrite(encoded.data(), encoded.size(), 1, outfp);
 		bytes_for_posting_lists += encoded.size();
 	}
@@ -347,7 +430,8 @@ void do_build(const char *infile, const char *outfile, int block_size)
 	corpus.filename_blocks.push_back("");
 
 	// Write the offsets to the filenames.
-	offset = filename_index_offset + corpus.filename_blocks.size() * sizeof(offset);
+	size_t bytes_for_filename_index = 0, bytes_for_filenames = 0;
+	offset = hdr.filename_index_offset_bytes + corpus.filename_blocks.size() * sizeof(offset);
 	for (const string &filename : corpus.filename_blocks) {
 		fwrite(&offset, sizeof(offset), 1, outfp);
 		offset += filename.size();
@@ -362,10 +446,10 @@ void do_build(const char *infile, const char *outfile, int block_size)
 
 	fclose(outfp);
 
-	size_t total_bytes __attribute__((unused)) = (bytes_for_trigrams + bytes_for_posting_lists + bytes_for_filename_index + bytes_for_filenames);
+	size_t total_bytes __attribute__((unused)) = (bytes_for_hashtable + bytes_for_posting_lists + bytes_for_filename_index + bytes_for_filenames);
 
 	dprintf("Block size:     %7d files\n", block_size);
-	dprintf("Trigrams:       %'7.1f MB\n", bytes_for_trigrams / 1048576.0);
+	dprintf("Hash table:     %'7.1f MB\n", bytes_for_hashtable / 1048576.0);
 	dprintf("Posting lists:  %'7.1f MB\n", bytes_for_posting_lists / 1048576.0);
 	dprintf("Filename index: %'7.1f MB\n", bytes_for_filename_index / 1048576.0);
 	dprintf("Filenames:      %'7.1f MB\n", bytes_for_filenames / 1048576.0);

@@ -1,3 +1,4 @@
+#include "db.h"
 #include "vp4.h"
 #include "io_uring_engine.h"
 
@@ -95,21 +96,6 @@ bool has_access(const char *filename,
 	return true;
 }
 
-struct Trigram {
-	uint32_t trgm;
-	uint32_t num_docids;
-	uint64_t offset;
-
-	bool operator==(const Trigram &other) const
-	{
-		return trgm == other.trgm;
-	}
-	bool operator<(const Trigram &other) const
-	{
-		return trgm < other.trgm;
-	}
-};
-
 class Corpus {
 public:
 	Corpus(int fd, IOUringEngine *engine);
@@ -118,39 +104,38 @@ public:
 	void get_compressed_filename_block(uint32_t docid, function<void(string)> cb) const;
 	size_t get_num_filename_blocks() const;
 	off_t offset_for_block(uint32_t docid) const {
-		return filename_index_offset + docid * sizeof(uint64_t);
+		return hdr.filename_index_offset_bytes + docid * sizeof(uint64_t);
 	}
 
 public:
 	const int fd;
 	IOUringEngine *const engine;
 
-	off_t len;
-	uint64_t filename_index_offset;
-
-	uint64_t num_trigrams;
-	const off_t trigram_offset = sizeof(uint64_t) * 2;
-
-	void binary_search_trigram(uint32_t trgm, uint32_t left, uint32_t right, function<void(const Trigram *trgmptr, size_t len)> cb);
+	Header hdr;
 };
 
 Corpus::Corpus(int fd, IOUringEngine *engine)
 	: fd(fd), engine(engine)
 {
-	len = lseek(fd, 0, SEEK_END);
-	if (len == -1) {
-		perror("lseek");
-		exit(1);
+	// Enable to test cold-cache behavior (except for access()).
+	if (false) {
+		off_t len = lseek(fd, 0, SEEK_END);
+		if (len == -1) {
+			perror("lseek");
+			exit(1);
+		}
+		posix_fadvise(fd, 0, len, POSIX_FADV_DONTNEED);
 	}
 
-	// Uncomment to test cold-cache behavior (except for access()).
-	// posix_fadvise(fd, 0, len, POSIX_FADV_DONTNEED);
-
-	uint64_t vals[2];
-	complete_pread(fd, vals, sizeof(vals), /*offset=*/0);
-
-	num_trigrams = vals[0];
-	filename_index_offset = vals[1];
+	complete_pread(fd, &hdr, sizeof(hdr), /*offset=*/0);
+	if (memcmp(hdr.magic, "\0plocate", 8) != 0) {
+		fprintf(stderr, "plocate.db is corrupt or an old version; please rebuild it.\n");
+		exit(1);
+	}
+	if (hdr.version != 0) {
+		fprintf(stderr, "plocate.db has version %u, expected 0; please rebuild it.\n", hdr.version);
+		exit(1);
+	}
 }
 
 Corpus::~Corpus()
@@ -160,26 +145,18 @@ Corpus::~Corpus()
 
 void Corpus::find_trigram(uint32_t trgm, function<void(const Trigram *trgmptr, size_t len)> cb)
 {
-	binary_search_trigram(trgm, 0, num_trigrams - 1, move(cb));
-}
-
-void Corpus::binary_search_trigram(uint32_t trgm, uint32_t left, uint32_t right, function<void(const Trigram *trgmptr, size_t len)> cb)
-{
-	if (left > right) {
-		cb(nullptr, 0);
-		return;
-	}
-	uint32_t mid = (left + right) / 2;
-	engine->submit_read(fd, sizeof(Trigram) * 2, trigram_offset + sizeof(Trigram) * mid, [this, trgm, left, mid, right, cb{ move(cb) }](string s) {
+	uint32_t bucket = hash_trigram(trgm, hdr.hashtable_size);
+	engine->submit_read(fd, sizeof(Trigram) * (hdr.extra_ht_slots + 2), hdr.hash_table_offset_bytes + sizeof(Trigram) * bucket, [this, trgm, bucket, cb{ move(cb) }](string s) {
 		const Trigram *trgmptr = reinterpret_cast<const Trigram *>(s.data());
-		const Trigram *next_trgmptr = trgmptr + 1;
-		if (trgmptr->trgm < trgm) {
-			binary_search_trigram(trgm, mid + 1, right, move(cb));
-		} else if (trgmptr->trgm > trgm) {
-			binary_search_trigram(trgm, left, mid - 1, move(cb));
-		} else {
-			cb(trgmptr, next_trgmptr->offset - trgmptr->offset);
+		for (unsigned i = 0; i < hdr.extra_ht_slots + 1; ++i) {
+			if (trgmptr[i].trgm == trgm) {
+				cb(trgmptr + i, trgmptr[i + 1].offset - trgmptr[i].offset);
+				return;
+			}
 		}
+
+		// Not found.
+		cb(nullptr, 0);
 	});
 }
 
@@ -199,10 +176,10 @@ size_t Corpus::get_num_filename_blocks() const
 {
 	// The beginning of the filename blocks is the end of the filename index blocks.
 	uint64_t end;
-	complete_pread(fd, &end, sizeof(end), filename_index_offset);
+	complete_pread(fd, &end, sizeof(end), hdr.filename_index_offset_bytes);
 
 	// Subtract the sentinel block.
-	return (end - filename_index_offset) / sizeof(uint64_t) - 1;
+	return (end - hdr.filename_index_offset_bytes) / sizeof(uint64_t) - 1;
 }
 
 size_t scan_file_block(const string &needle, string_view compressed,
@@ -306,7 +283,7 @@ void do_search_file(const string &needle, const char *filename)
 
 	IOUringEngine engine;
 	Corpus corpus(fd, &engine);
-	dprintf("Corpus init took %.1f ms.\n", 1e3 * duration<float>(steady_clock::now() - start).count());
+	dprintf("Corpus init done after %.1f ms.\n", 1e3 * duration<float>(steady_clock::now() - start).count());
 
 	if (needle.size() < 3) {
 		// Too short for trigram matching. Apply brute force.
@@ -329,7 +306,7 @@ void do_search_file(const string &needle, const char *filename)
 		});
 	}
 	engine.finish();
-	dprintf("Binary search took %.1f ms.\n", 1e3 * duration<float>(steady_clock::now() - start).count());
+	dprintf("Hashtable lookups done after %.1f ms.\n", 1e3 * duration<float>(steady_clock::now() - start).count());
 
 	sort(trigrams.begin(), trigrams.end());
 	{
@@ -392,7 +369,7 @@ void do_search_file(const string &needle, const char *filename)
 		});
 	}
 	engine.finish();
-	dprintf("Intersection took %.1f ms. Doing final verification and printing:\n",
+	dprintf("Intersection done after %.1f ms. Doing final verification and printing:\n",
 	        1e3 * duration<float>(steady_clock::now() - start).count());
 
 	size_t matched __attribute__((unused)) = scan_docids(needle, in1, corpus, &engine);
