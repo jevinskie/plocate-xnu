@@ -267,7 +267,7 @@ string zstd_compress(const string &src, string *tempbuf)
 
 void do_build(const char *infile, const char *outfile, int block_size)
 {
-	//steady_clock::time_point start = steady_clock::now();
+	steady_clock::time_point start __attribute__((unused)) = steady_clock::now();
 
 	Corpus corpus(block_size);
 
@@ -301,8 +301,7 @@ void do_build(const char *infile, const char *outfile, int block_size)
 	        corpus.num_files, corpus.invindex.size(), trigrams, double(trigrams) / corpus.invindex.size(), longest_posting_list);
 	dprintf("%zu bytes used for posting lists (%.2f bits/entry)\n", bytes_used, 8 * bytes_used / double(trigrams));
 
-	//steady_clock::time_point end = steady_clock::now();
-	dprintf("Building posting lists took %.1f ms.\n\n", 1e3 * duration<float>(end - start).count());
+	dprintf("Building posting lists took %.1f ms.\n\n", 1e3 * duration<float>(steady_clock::now() - start).count());
 
 	vector<uint32_t> all_trigrams;
 	for (auto &[trigram, pl_builder] : corpus.invindex) {
@@ -363,7 +362,7 @@ void do_build(const char *infile, const char *outfile, int block_size)
 
 	fclose(outfp);
 
-	//size_t total_bytes = (bytes_for_trigrams + bytes_for_posting_lists + bytes_for_filename_index + bytes_for_filenames);
+	size_t total_bytes __attribute__((unused)) = (bytes_for_trigrams + bytes_for_posting_lists + bytes_for_filename_index + bytes_for_filenames);
 
 	dprintf("Block size:     %7d files\n", block_size);
 	dprintf("Trigrams:       %'7.1f MB\n", bytes_for_trigrams / 1048576.0);
