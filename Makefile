@@ -7,8 +7,8 @@ PREFIX ?= /usr/local
 
 all: plocate plocate-build
 
-plocate: plocate.o TurboPFor-Integer-Compression/libic.a
-	$(CXX) -o $@ $^ -lzstd
+plocate: plocate.o io_uring_engine.o TurboPFor-Integer-Compression/libic.a
+	$(CXX) -o $@ $^ -lzstd $(shell pkg-config --libs liburing)
 
 plocate-build: plocate-build.o TurboPFor-Integer-Compression/libic.a
 	$(CXX) -o $@ $^ -lzstd
