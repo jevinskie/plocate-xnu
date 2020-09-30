@@ -17,7 +17,7 @@ TurboPFor-Integer-Compression/libic.a:
 	cd TurboPFor-Integer-Compression/ && $(MAKE)
 
 clean:
-	$(RM) plocate.o plocate-build.o plocate plocate-build
+	$(RM) plocate.o plocate-build.o io_uring_engine.o plocate plocate-build
 	cd TurboPFor-Integer-Compression/ && $(MAKE) clean
 
 install: all
