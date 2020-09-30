@@ -4,13 +4,13 @@
 #include <stdint.h>
 
 struct Header {
-	char magic[8]; // "\0plocate";
+	char magic[8];  // "\0plocate";
 	uint32_t version;  // 0.
 	uint32_t hashtable_size;
 	uint32_t extra_ht_slots;
 	uint64_t hash_table_offset_bytes;
 	uint64_t filename_index_offset_bytes;
-}; 
+};
 
 struct Trigram {
 	uint32_t trgm;

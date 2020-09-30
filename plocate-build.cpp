@@ -1,3 +1,4 @@
+#include "db.h"
 #include "vp4.h"
 
 #include <algorithm>
@@ -18,8 +19,6 @@
 #include <unordered_map>
 #include <vector>
 #include <zstd.h>
-
-#include "db.h"
 
 #define P4NENC_BOUND(n) ((n + 127) / 128 + (n + 32) * sizeof(uint32_t))
 #define dprintf(...)
@@ -304,7 +303,7 @@ unique_ptr<Trigram[]> create_hashtable(const Corpus &corpus, const vector<uint32
 	}
 	for (uint32_t trgm : all_trigrams) {
 		// We don't know offset yet, so set it to zero.
-		Trigram to_insert{trgm, uint32_t(corpus.invindex.find(trgm)->second.num_docids), 0};
+		Trigram to_insert{ trgm, uint32_t(corpus.invindex.find(trgm)->second.num_docids), 0 };
 
 		uint32_t bucket = hash_trigram(trgm, ht_size);
 		unsigned distance = 0;
@@ -375,7 +374,7 @@ void do_build(const char *infile, const char *outfile, int block_size)
 	unique_ptr<Trigram[]> hashtable;
 	uint32_t ht_size = next_prime(all_trigrams.size());
 	constexpr unsigned num_overflow_slots = 16;
-	for ( ;; ) {
+	for (;;) {
 		hashtable = create_hashtable(corpus, all_trigrams, ht_size, num_overflow_slots);
 		if (hashtable == nullptr) {
 			dprintf("Failed creating hash table of size %u, increasing by 5%% and trying again.\n", ht_size);

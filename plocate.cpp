@@ -1,6 +1,6 @@
 #include "db.h"
-#include "vp4.h"
 #include "io_uring_engine.h"
+#include "vp4.h"
 
 #include <algorithm>
 #include <arpa/inet.h>
@@ -103,7 +103,8 @@ public:
 	void find_trigram(uint32_t trgm, function<void(const Trigram *trgmptr, size_t len)> cb);
 	void get_compressed_filename_block(uint32_t docid, function<void(string)> cb) const;
 	size_t get_num_filename_blocks() const;
-	off_t offset_for_block(uint32_t docid) const {
+	off_t offset_for_block(uint32_t docid) const
+	{
 		return hdr.filename_index_offset_bytes + docid * sizeof(uint64_t);
 	}
 
@@ -197,7 +198,7 @@ size_t scan_file_block(const string &needle, string_view compressed,
 	block.resize(uncompressed_len + 1);
 
 	size_t err = ZSTD_decompress(&block[0], block.size(), compressed.data(),
-	                compressed.size());
+	                             compressed.size());
 	if (ZSTD_isError(err)) {
 		fprintf(stderr, "ZSTD_decompress(): %s\n", ZSTD_getErrorName(err));
 		exit(1);
@@ -256,7 +257,7 @@ void scan_all_docids(const string &needle, int fd, const Corpus &corpus, IOUring
 		for (uint32_t docid = io_docid; docid < last_docid; ++docid) {
 			size_t relative_offset = offsets[docid] - offsets[io_docid];
 			size_t len = offsets[docid + 1] - offsets[docid];
-			scan_file_block(needle, {&compressed[relative_offset], len}, &access_rx_cache);
+			scan_file_block(needle, { &compressed[relative_offset], len }, &access_rx_cache);
 		}
 	}
 }
@@ -339,7 +340,8 @@ void do_search_file(const string &needle, const char *filename)
 				break;
 		}
 		engine.submit_read(fd, len, trgmptr.offset, [trgmptr, len, &done, &in1, &in2, &out](string s) {
-			if (done) return;
+			if (done)
+				return;
 			uint32_t trgm __attribute__((unused)) = trgmptr.trgm;
 			size_t num = trgmptr.num_docids;
 			unsigned char *pldata = reinterpret_cast<unsigned char *>(s.data());

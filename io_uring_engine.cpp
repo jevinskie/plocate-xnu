@@ -2,12 +2,12 @@
 #ifndef WITHOUT_URING
 #include <liburing.h>
 #endif
+#include "io_uring_engine.h"
+
+#include <functional>
+#include <memory>
 #include <stdint.h>
 #include <unistd.h>
-#include <memory>
-#include <functional>
-
-#include "io_uring_engine.h"
 
 using namespace std;
 
@@ -163,5 +163,3 @@ void complete_pread(int fd, void *ptr, size_t len, off_t offset)
 		offset -= ret;
 	}
 }
-
-
