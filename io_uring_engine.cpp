@@ -1,5 +1,7 @@
 #include <string.h>
+#ifndef WITHOUT_URING
 #include <liburing.h>
+#endif
 #include <stdint.h>
 #include <unistd.h>
 #include <memory>
@@ -11,7 +13,11 @@ using namespace std;
 
 IOUringEngine::IOUringEngine()
 {
+#ifdef WITHOUT_URING
+	int ret = -1;
+#else
 	int ret = io_uring_queue_init(queue_depth, &ring, 0);
+#endif
 	using_uring = (ret >= 0);
 }
 
@@ -26,6 +32,7 @@ void IOUringEngine::submit_read(int fd, size_t len, off_t offset, function<void(
 		return;
 	}
 
+#ifndef WITHOUT_URING
 	if (pending_reads < queue_depth) {
 		io_uring_sqe *sqe = io_uring_get_sqe(&ring);
 		if (sqe == nullptr) {
@@ -36,8 +43,10 @@ void IOUringEngine::submit_read(int fd, size_t len, off_t offset, function<void(
 	} else {
 		queued_reads.push(QueuedRead{ fd, len, offset, move(cb) });
 	}
+#endif
 }
 
+#ifndef WITHOUT_URING
 void IOUringEngine::submit_read_internal(io_uring_sqe *sqe, int fd, size_t len, off_t offset, function<void(string)> cb)
 {
 	void *buf;
@@ -51,6 +60,7 @@ void IOUringEngine::submit_read_internal(io_uring_sqe *sqe, int fd, size_t len, 
 	io_uring_sqe_set_data(sqe, pending);
 	++pending_reads;
 }
+#endif
 
 void IOUringEngine::finish()
 {
@@ -58,6 +68,7 @@ void IOUringEngine::finish()
 		return;
 	}
 
+#ifndef WITHOUT_URING
 	int ret = io_uring_submit(&ring);
 	if (ret < 0) {
 		fprintf(stderr, "io_uring_submit: %s\n", strerror(-ret));
@@ -133,6 +144,7 @@ void IOUringEngine::finish()
 			}
 		}
 	}
+#endif
 }
 
 void complete_pread(int fd, void *ptr, size_t len, off_t offset)

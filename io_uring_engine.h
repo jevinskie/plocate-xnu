@@ -5,7 +5,10 @@
 #include <queue>
 #include <string>
 #include <stdint.h>
+#ifndef WITHOUT_URING
 #include <liburing.h>
+#endif
+#include <sys/socket.h>
 
 class IOUringEngine {
 public:
@@ -15,9 +18,11 @@ public:
 	size_t get_waiting_reads() const { return pending_reads + queued_reads.size(); }
 
 private:
+#ifndef WITHOUT_URING
 	void submit_read_internal(io_uring_sqe *sqe, int fd, size_t len, off_t offset, std::function<void(std::string)> cb);
 
 	io_uring ring;
+#endif
 	size_t pending_reads = 0;  // Number of requests we have going in the ring.
 	bool using_uring;
 

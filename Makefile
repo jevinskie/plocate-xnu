@@ -4,11 +4,16 @@ CXXFLAGS ?= -O2 -g -Wall -std=gnu++17
 CPPFLAGS=-ITurboPFor-Integer-Compression/
 INSTALL ?= install
 PREFIX ?= /usr/local
+URING_LIBS = $(shell pkg-config --libs liburing)
+
+ifeq ($(URING_LIBS),)
+  CPPFLAGS += -DWITHOUT_URING
+endif
 
 all: plocate plocate-build
 
 plocate: plocate.o io_uring_engine.o TurboPFor-Integer-Compression/libic.a
-	$(CXX) -o $@ $^ -lzstd $(shell pkg-config --libs liburing)
+	$(CXX) -o $@ $^ -lzstd $(URING_LIBS)
 
 plocate-build: plocate-build.o TurboPFor-Integer-Compression/libic.a
 	$(CXX) -o $@ $^ -lzstd
