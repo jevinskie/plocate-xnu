@@ -71,28 +71,27 @@ void IOUringEngine::finish()
 #ifndef WITHOUT_URING
 	bool anything_to_submit = true;
 	while (pending_reads > 0) {
-		io_uring_cqe *cqes[queue_depth];
-		int num_sqes = io_uring_peek_batch_cqe(&ring, cqes, queue_depth);
-		if (num_sqes == 0) {
+		io_uring_cqe *cqe;
+		if (io_uring_peek_cqe(&ring, &cqe) != 0) {
 			if (anything_to_submit) {
 				// Nothing ready, so submit whatever is pending and then do a blocking wait.
-				int ret = io_uring_submit(&ring);
+				int ret = io_uring_submit_and_wait(&ring, 1);
 				if (ret < 0) {
 					fprintf(stderr, "io_uring_submit(queued): %s\n", strerror(-ret));
 					exit(1);
 				}
 				anything_to_submit = false;
+			} else {
+				int ret = io_uring_wait_cqe(&ring, &cqe);
+				if (ret < 0) {
+					fprintf(stderr, "io_uring_wait_cqe: %s\n", strerror(-ret));
+					exit(1);
+				}
 			}
-			int ret = io_uring_wait_cqe(&ring, &cqes[0]);
-			if (ret < 0) {
-				fprintf(stderr, "io_uring_wait_cqe: %s\n", strerror(-ret));
-				exit(1);
-			}
-			num_sqes = 1;
 		}
 
-		for (int sqe_idx = 0; sqe_idx < num_sqes; ++sqe_idx) {
-			io_uring_cqe *cqe = cqes[sqe_idx];
+		unsigned head;
+		io_uring_for_each_cqe(&ring, head, cqe) {
 			PendingRead *pending = reinterpret_cast<PendingRead *>(cqe->user_data);
 			if (cqe->res <= 0) {
 				fprintf(stderr, "async read failed: %s\n", strerror(-cqe->res));
@@ -129,19 +128,19 @@ void IOUringEngine::finish()
 					anything_to_submit = true;
 				}
 			}
+		}
 
-			// See if there are any queued reads we can submit now.
-			while (!queued_reads.empty() && pending_reads < queue_depth) {
-				io_uring_sqe *sqe = io_uring_get_sqe(&ring);
-				if (sqe == nullptr) {
-					fprintf(stderr, "io_uring_get_sqe: %s\n", strerror(errno));
-					exit(1);
-				}
-				QueuedRead &qr = queued_reads.front();
-				submit_read_internal(sqe, qr.fd, qr.len, qr.offset, move(qr.cb));
-				queued_reads.pop();
-				anything_to_submit = true;
+		// See if there are any queued reads we can submit now.
+		while (!queued_reads.empty() && pending_reads < queue_depth) {
+			io_uring_sqe *sqe = io_uring_get_sqe(&ring);
+			if (sqe == nullptr) {
+				fprintf(stderr, "io_uring_get_sqe: %s\n", strerror(errno));
+				exit(1);
 			}
+			QueuedRead &qr = queued_reads.front();
+			submit_read_internal(sqe, qr.fd, qr.len, qr.offset, move(qr.cb));
+			queued_reads.pop();
+			anything_to_submit = true;
 		}
 	}
 #endif
