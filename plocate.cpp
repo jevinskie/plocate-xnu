@@ -328,7 +328,7 @@ void do_search_file(const vector<string> &needles, const char *filename)
 			corpus.find_trigram(trgm, [trgm, &trigrams](const Trigram *trgmptr, size_t len) {
 				if (trgmptr == nullptr) {
 					dprintf("trigram %06x isn't found, we abort the search\n", trgm);
-					return;
+					exit(0);
 				}
 				trigrams.emplace_back(*trgmptr, len);
 			});
