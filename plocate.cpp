@@ -50,7 +50,7 @@ private:
 
 void Serializer::print_delayed(int seq, const vector<string> msg)
 {
-	pending.push(Element{seq, move(msg)});
+	pending.push(Element{ seq, move(msg) });
 }
 
 void Serializer::release_current()
@@ -322,7 +322,8 @@ void do_search_file(const vector<string> &needles, const char *filename)
 
 	vector<pair<Trigram, size_t>> trigrams;
 	for (const string &needle : needles) {
-		if (needle.size() < 3) continue;
+		if (needle.size() < 3)
+			continue;
 		for (size_t i = 0; i < needle.size() - 2; ++i) {
 			uint32_t trgm = read_trigram(needle, i);
 			corpus.find_trigram(trgm, [trgm, &trigrams](const Trigram *trgmptr, size_t len) {
