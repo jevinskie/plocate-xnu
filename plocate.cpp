@@ -321,17 +321,26 @@ void do_search_file(const vector<string> &needles, const char *filename)
 	dprintf("Corpus init done after %.1f ms.\n", 1e3 * duration<float>(steady_clock::now() - start).count());
 
 	vector<pair<Trigram, size_t>> trigrams;
+	uint64_t shortest_so_far = numeric_limits<uint32_t>::max();
 	for (const string &needle : needles) {
 		if (needle.size() < 3)
 			continue;
 		for (size_t i = 0; i < needle.size() - 2; ++i) {
 			uint32_t trgm = read_trigram(needle, i);
-			corpus.find_trigram(trgm, [trgm, &trigrams](const Trigram *trgmptr, size_t len) {
+			corpus.find_trigram(trgm, [trgm, &trigrams, &shortest_so_far](const Trigram *trgmptr, size_t len) {
 				if (trgmptr == nullptr) {
-					dprintf("trigram %06x isn't found, we abort the search\n", trgm);
+					dprintf("trigram '%c%c%c' isn't found, we abort the search\n",
+					        trgm & 0xff, (trgm >> 8) & 0xff, (trgm >> 16) & 0xff);
 					exit(0);
 				}
-				trigrams.emplace_back(*trgmptr, len);
+				if (trgmptr->num_docids > shortest_so_far * 100) {
+					dprintf("not loading trigram '%c%c%c' with %u docids, it would be ignored later anyway\n",
+					        trgm & 0xff, (trgm >> 8) & 0xff, (trgm >> 16) & 0xff,
+					        trgmptr->num_docids);
+				} else {
+					trigrams.emplace_back(*trgmptr, len);
+					shortest_so_far = std::min<uint64_t>(shortest_so_far, trgmptr->num_docids);
+				}
 			});
 		}
 	}
