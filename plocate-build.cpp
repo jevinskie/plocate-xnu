@@ -12,7 +12,6 @@
 #include <stdio.h>
 #include <string.h>
 #include <string>
-#include <sys/mman.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
@@ -207,63 +206,72 @@ void Corpus::flush_block()
 	++num_blocks;
 }
 
-const char *handle_directory(const char *ptr, Corpus *corpus)
+string read_cstr(FILE *fp)
 {
-	ptr += sizeof(db_directory);
+	string ret;
+	for ( ;; ) {
+		int ch = getc(fp);
+		if (ch == -1) {
+			perror("getc");
+			exit(1);
+		}
+		if (ch == 0) {
+			return ret;
+		}
+		ret.push_back(ch);
+	}
+}
 
-	string dir_path = ptr;
-	ptr += dir_path.size() + 1;
+void handle_directory(FILE *fp, Corpus *corpus)
+{
+	db_directory dummy;
+	if (fread(&dummy, sizeof(dummy), 1, fp) != 1) {
+		if (feof(fp)) {
+			return;
+		} else {
+			perror("fread");
+		}
+	}
+
+	string dir_path = read_cstr(fp);
 	if (dir_path == "/") {
 		dir_path = "";
 	}
 
 	for (;;) {
-		uint8_t type = *ptr++;
+		int type = getc(fp);
 		if (type == DBE_NORMAL) {
-			string filename = ptr;
+			string filename = read_cstr(fp);
 			corpus->add_file(dir_path + "/" + filename);
-			ptr += filename.size() + 1;
 		} else if (type == DBE_DIRECTORY) {
-			string dirname = ptr;
+			string dirname = read_cstr(fp);
 			corpus->add_file(dir_path + "/" + dirname);
-			ptr += dirname.size() + 1;
 		} else {
-			return ptr;
+			return;  // Probably end.
 		}
 	}
 }
 
 void read_mlocate(const char *filename, Corpus *corpus)
 {
-	int fd = open(filename, O_RDONLY);
-	if (fd == -1) {
+	FILE *fp = fopen(filename, "rb");
+	if (fp == nullptr) {
 		perror(filename);
 		exit(1);
 	}
-	off_t len = lseek(fd, 0, SEEK_END);
-	if (len == -1) {
-		perror("lseek");
-		exit(1);
-	}
-	const char *data = (char *)mmap(nullptr, len, PROT_READ, MAP_SHARED, fd, /*offset=*/0);
-	if (data == MAP_FAILED) {
-		perror("mmap");
-		exit(1);
-	}
 
-	const db_header *hdr = (const db_header *)data;
+	db_header hdr;
+	if (fread(&hdr, sizeof(hdr), 1, fp) != 1) {
+		perror("short read");
+		exit(1);
+	}
 
 	// TODO: Care about the base path.
-	string path = data + sizeof(db_header);
-	uint64_t offset = sizeof(db_header) + path.size() + 1 + ntohl(hdr->conf_size);
-
-	const char *ptr = data + offset;
-	while (ptr < data + len) {
-		ptr = handle_directory(ptr, corpus);
+	string path = read_cstr(fp);
+	while (!feof(fp)) {
+		handle_directory(fp, corpus);
 	}
-
-	munmap((void *)data, len);
-	close(fd);
+	fclose(fp);
 }
 
 string zstd_compress(const string &src, string *tempbuf)
