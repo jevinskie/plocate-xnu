@@ -433,6 +433,7 @@ void usage()
 {
 	// The help text comes from mlocate.
 	printf("Usage: plocate [OPTION]... PATTERN...\n");
+	printf("\n");
 	printf("  -d, --database DBPATH  use DBPATH instead of default database (which is\n");
 	printf("                         %s)\n", dbpath);
 	printf("  -h, --help             print this help\n");
