@@ -29,6 +29,8 @@ using namespace std::chrono;
 
 string zstd_compress(const string &src, string *tempbuf);
 
+constexpr unsigned num_overflow_slots = 16;
+
 static inline uint32_t read_unigram(const string_view s, size_t idx)
 {
 	if (idx < s.size()) {
@@ -143,16 +145,17 @@ void PostingListBuilder::write_header(uint32_t docid)
 
 class Corpus {
 public:
-	Corpus(size_t block_size)
-		: block_size(block_size) {}
+	Corpus(FILE *outfp, size_t block_size)
+		: outfp(outfp), block_size(block_size) {}
 	void add_file(string filename);
 	void flush_block();
 
-	vector<string> filename_blocks;
+	vector<uint64_t> filename_blocks;
 	unordered_map<uint32_t, PostingListBuilder> invindex;
 	size_t num_files = 0, num_files_in_block = 0, num_blocks = 0;
 
 private:
+	FILE *outfp;
 	string current_block;
 	string tempbuf;
 	const size_t block_size;
@@ -192,7 +195,12 @@ void Corpus::flush_block()
 	}
 
 	// Compress and add the filename block.
-	filename_blocks.push_back(zstd_compress(current_block, &tempbuf));
+	filename_blocks.push_back(ftell(outfp));
+	string compressed = zstd_compress(current_block, &tempbuf);
+	if (fwrite(compressed.data(), compressed.size(), 1, outfp) != 1) {
+		perror("fwrite()");
+		exit(1);
+	}
 
 	current_block.clear();
 	num_files_in_block = 0;
@@ -329,7 +337,20 @@ void do_build(const char *infile, const char *outfile, int block_size)
 {
 	steady_clock::time_point start __attribute__((unused)) = steady_clock::now();
 
-	Corpus corpus(block_size);
+	umask(0027);
+	FILE *outfp = fopen(outfile, "wb");
+
+	// Write the header.
+	Header hdr;
+	memcpy(hdr.magic, "\0plocate", 8);
+	hdr.version = -1;  // Mark as broken.
+	hdr.hashtable_size = 0;  // Not known yet.
+	hdr.extra_ht_slots = num_overflow_slots;
+	hdr.hash_table_offset_bytes = -1;  // We don't know these offsets yet.
+	hdr.filename_index_offset_bytes = -1;
+	fwrite(&hdr, sizeof(hdr), 1, outfp);
+
+	Corpus corpus(outfp, block_size);
 
 	read_mlocate(infile, &corpus);
 	if (false) {  // To read a plain text file.
@@ -349,17 +370,29 @@ void do_build(const char *infile, const char *outfile, int block_size)
 	corpus.flush_block();
 	dprintf("Read %zu files from %s\n", corpus.num_files, infile);
 
+	// Stick an empty block at the end as sentinel.
+	corpus.filename_blocks.push_back(ftell(outfp));
+	const size_t bytes_for_filenames = corpus.filename_blocks.back() - corpus.filename_blocks.front();
+
+	// Write the offsets to the filenames.
+	hdr.filename_index_offset_bytes = ftell(outfp);
+	const size_t bytes_for_filename_index = corpus.filename_blocks.size() * sizeof(uint64_t);
+	fwrite(corpus.filename_blocks.data(), corpus.filename_blocks.size(), sizeof(uint64_t), outfp);
+	corpus.filename_blocks.clear();
+	corpus.filename_blocks.shrink_to_fit();
+
+	// Finish up encoding the posting lists.
 	size_t trigrams = 0, longest_posting_list = 0;
-	size_t bytes_used = 0;
+	size_t bytes_for_posting_lists = 0;
 	for (auto &[trigram, pl_builder] : corpus.invindex) {
 		pl_builder.finish();
 		longest_posting_list = max(longest_posting_list, pl_builder.num_docids);
 		trigrams += pl_builder.num_docids;
-		bytes_used += pl_builder.encoded.size();
+		bytes_for_posting_lists += pl_builder.encoded.size();
 	}
 	dprintf("%zu files, %zu different trigrams, %zu entries, avg len %.2f, longest %zu\n",
 	        corpus.num_files, corpus.invindex.size(), trigrams, double(trigrams) / corpus.invindex.size(), longest_posting_list);
-	dprintf("%zu bytes used for posting lists (%.2f bits/entry)\n", bytes_used, 8 * bytes_used / double(trigrams));
+	dprintf("%zu bytes used for posting lists (%.2f bits/entry)\n", bytes_for_posting_lists, 8 * bytes_for_posting_lists / double(trigrams));
 
 	dprintf("Building posting lists took %.1f ms.\n\n", 1e3 * duration<float>(steady_clock::now() - start).count());
 
@@ -371,9 +404,9 @@ void do_build(const char *infile, const char *outfile, int block_size)
 	}
 	sort(all_trigrams.begin(), all_trigrams.end());
 
+	// Create the hash table.
 	unique_ptr<Trigram[]> hashtable;
 	uint32_t ht_size = next_prime(all_trigrams.size());
-	constexpr unsigned num_overflow_slots = 16;
 	for (;;) {
 		hashtable = create_hashtable(corpus, all_trigrams, ht_size, num_overflow_slots);
 		if (hashtable == nullptr) {
@@ -385,64 +418,37 @@ void do_build(const char *infile, const char *outfile, int block_size)
 		}
 	}
 
-	umask(0027);
-	FILE *outfp = fopen(outfile, "wb");
-
 	// Find the offsets for each posting list.
 	size_t bytes_for_hashtable = (ht_size + num_overflow_slots + 1) * sizeof(Trigram);
-	uint64_t offset = sizeof(Header) + bytes_for_hashtable;
+	uint64_t offset = ftell(outfp) + bytes_for_hashtable;
 	for (unsigned i = 0; i < ht_size + num_overflow_slots + 1; ++i) {
 		hashtable[i].offset = offset;  // Needs to be there even for empty slots.
 		if (hashtable[i].num_docids == 0) {
 			continue;
 		}
 
-		const PostingListBuilder &pl_builder = corpus.invindex[hashtable[i].trgm];
-		offset += pl_builder.encoded.size();
+		const string &encoded = corpus.invindex[hashtable[i].trgm].encoded;
+		offset += encoded.size();
 	}
 
-	// Write the header.
-	Header hdr;
-	memcpy(hdr.magic, "\0plocate", 8);
-	hdr.version = 0;
-	hdr.hashtable_size = ht_size;
-	hdr.extra_ht_slots = num_overflow_slots;
-	hdr.hash_table_offset_bytes = sizeof(hdr);  // This member is just there for flexibility.
-	hdr.filename_index_offset_bytes = offset;
-	fwrite(&hdr, sizeof(hdr), 1, outfp);
-
 	// Write the hash table.
+	hdr.hash_table_offset_bytes = ftell(outfp);
+	hdr.hashtable_size = ht_size;
 	fwrite(hashtable.get(), ht_size + num_overflow_slots + 1, sizeof(Trigram), outfp);
 
 	// Write the actual posting lists.
-	size_t bytes_for_posting_lists = 0;
 	for (unsigned i = 0; i < ht_size + num_overflow_slots + 1; ++i) {
 		if (hashtable[i].num_docids == 0) {
 			continue;
 		}
 		const string &encoded = corpus.invindex[hashtable[i].trgm].encoded;
 		fwrite(encoded.data(), encoded.size(), 1, outfp);
-		bytes_for_posting_lists += encoded.size();
 	}
 
-	// Stick an empty block at the end as sentinel.
-	corpus.filename_blocks.push_back("");
-
-	// Write the offsets to the filenames.
-	size_t bytes_for_filename_index = 0, bytes_for_filenames = 0;
-	offset = hdr.filename_index_offset_bytes + corpus.filename_blocks.size() * sizeof(offset);
-	for (const string &filename : corpus.filename_blocks) {
-		fwrite(&offset, sizeof(offset), 1, outfp);
-		offset += filename.size();
-		bytes_for_filename_index += sizeof(offset);
-		bytes_for_filenames += filename.size();
-	}
-
-	// Write the actual filenames.
-	for (const string &filename : corpus.filename_blocks) {
-		fwrite(filename.data(), filename.size(), 1, outfp);
-	}
-
+	// Rewind, and write the updated header.
+	hdr.version = 0;
+	fseek(outfp, 0, SEEK_SET);
+	fwrite(&hdr, sizeof(hdr), 1, outfp);
 	fclose(outfp);
 
 	size_t total_bytes __attribute__((unused)) = (bytes_for_hashtable + bytes_for_posting_lists + bytes_for_filename_index + bytes_for_filenames);
