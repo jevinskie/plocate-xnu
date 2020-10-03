@@ -82,28 +82,25 @@ private:
 
 	vector<uint32_t> pending_docids;
 
-	uint32_t last_block_end;
+	uint32_t last_block_end, last_docid = -1;
 };
 
 void PostingListBuilder::add_docid(uint32_t docid)
 {
 	// Deduplicate against the last inserted value, if any.
-	if (pending_docids.empty()) {
-		if (encoded.empty()) {
-			// Very first docid.
-			write_header(docid);
-			++num_docids;
-			last_block_end = docid;
-			return;
-		} else if (docid == last_block_end) {
-			return;
-		}
-	} else {
-		if (docid == pending_docids.back()) {
-			return;
-		}
+	if (docid == last_docid) {
+		return;
 	}
 
+	if (num_docids == 0) {
+		// Very first docid.
+		write_header(docid);
+		++num_docids;
+		last_block_end = last_docid = docid;
+		return;
+	}
+
+	last_docid = docid;
 	pending_docids.push_back(docid);
 	if (pending_docids.size() == 128) {
 		append_block();
