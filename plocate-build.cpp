@@ -23,6 +23,8 @@
 #define dprintf(...)
 //#define dprintf(...) fprintf(stderr, __VA_ARGS__);
 
+#define NUM_TRIGRAMS 16777216
+
 using namespace std;
 using namespace std::chrono;
 
@@ -142,15 +144,24 @@ void PostingListBuilder::write_header(uint32_t docid)
 class Corpus {
 public:
 	Corpus(FILE *outfp, size_t block_size)
-		: outfp(outfp), block_size(block_size) {}
+		: invindex(new PostingListBuilder*[NUM_TRIGRAMS]), outfp(outfp), block_size(block_size) {}
 	void add_file(string filename);
 	void flush_block();
 
 	vector<uint64_t> filename_blocks;
-	unordered_map<uint32_t, PostingListBuilder> invindex;
 	size_t num_files = 0, num_files_in_block = 0, num_blocks = 0;
+	bool seen_trigram(uint32_t trgm) {
+		return invindex[trgm] != nullptr;
+	}
+	PostingListBuilder& get_pl_builder(uint32_t trgm) {
+		if (invindex[trgm] == nullptr) {
+			invindex[trgm] = new PostingListBuilder;
+		}
+		return *invindex[trgm];
+	}
 
 private:
+	unique_ptr<PostingListBuilder*[]> invindex;
 	FILE *outfp;
 	string current_block;
 	string tempbuf;
@@ -184,7 +195,7 @@ void Corpus::flush_block()
 		if (s.size() >= 3) {
 			for (size_t j = 0; j < s.size() - 2; ++j) {
 				uint32_t trgm = read_trigram(s, j);
-				invindex[trgm].add_docid(docid);
+				get_pl_builder(trgm).add_docid(docid);
 			}
 		}
 		ptr += s.size() + 1;
@@ -306,7 +317,7 @@ uint32_t next_prime(uint32_t x)
 	return x;
 }
 
-unique_ptr<Trigram[]> create_hashtable(const Corpus &corpus, const vector<uint32_t> &all_trigrams, uint32_t ht_size, uint32_t num_overflow_slots)
+unique_ptr<Trigram[]> create_hashtable(Corpus &corpus, const vector<uint32_t> &all_trigrams, uint32_t ht_size, uint32_t num_overflow_slots)
 {
 	unique_ptr<Trigram[]> ht(new Trigram[ht_size + num_overflow_slots + 1]);  // 1 for the sentinel element at the end.
 	for (unsigned i = 0; i < ht_size + num_overflow_slots + 1; ++i) {
@@ -316,7 +327,7 @@ unique_ptr<Trigram[]> create_hashtable(const Corpus &corpus, const vector<uint32
 	}
 	for (uint32_t trgm : all_trigrams) {
 		// We don't know offset yet, so set it to zero.
-		Trigram to_insert{ trgm, uint32_t(corpus.invindex.find(trgm)->second.num_docids), 0 };
+		Trigram to_insert{ trgm, uint32_t(corpus.get_pl_builder(trgm).num_docids), 0 };
 
 		uint32_t bucket = hash_trigram(trgm, ht_size);
 		unsigned distance = 0;
@@ -390,7 +401,9 @@ void do_build(const char *infile, const char *outfile, int block_size)
 	// Finish up encoding the posting lists.
 	size_t trigrams = 0, longest_posting_list = 0;
 	size_t bytes_for_posting_lists = 0;
-	for (auto &[trigram, pl_builder] : corpus.invindex) {
+	for (unsigned trgm = 0; trgm < NUM_TRIGRAMS; ++trgm) {
+		if (!corpus.seen_trigram(trgm)) continue;
+		PostingListBuilder &pl_builder = corpus.get_pl_builder(trgm);
 		pl_builder.finish();
 		longest_posting_list = max(longest_posting_list, pl_builder.num_docids);
 		trigrams += pl_builder.num_docids;
@@ -402,13 +415,13 @@ void do_build(const char *infile, const char *outfile, int block_size)
 
 	dprintf("Building posting lists took %.1f ms.\n\n", 1e3 * duration<float>(steady_clock::now() - start).count());
 
-	// Sort the trigrams, mostly to get a consistent result every time
-	// (the hash table will put things in random order anyway).
+	// Find the used trigrams.
 	vector<uint32_t> all_trigrams;
-	for (auto &[trigram, pl_builder] : corpus.invindex) {
-		all_trigrams.push_back(trigram);
+	for (unsigned trgm = 0; trgm < NUM_TRIGRAMS; ++trgm) {
+		if (corpus.seen_trigram(trgm)) {
+			all_trigrams.push_back(trgm);
+		}
 	}
-	sort(all_trigrams.begin(), all_trigrams.end());
 
 	// Create the hash table.
 	unique_ptr<Trigram[]> hashtable;
@@ -433,7 +446,7 @@ void do_build(const char *infile, const char *outfile, int block_size)
 			continue;
 		}
 
-		const string &encoded = corpus.invindex[hashtable[i].trgm].encoded;
+		const string &encoded = corpus.get_pl_builder(hashtable[i].trgm).encoded;
 		offset += encoded.size();
 	}
 
@@ -447,7 +460,7 @@ void do_build(const char *infile, const char *outfile, int block_size)
 		if (hashtable[i].num_docids == 0) {
 			continue;
 		}
-		const string &encoded = corpus.invindex[hashtable[i].trgm].encoded;
+		const string &encoded = corpus.get_pl_builder(hashtable[i].trgm).encoded;
 		fwrite(encoded.data(), encoded.size(), 1, outfp);
 	}
 
