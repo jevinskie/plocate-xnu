@@ -72,7 +72,7 @@ struct db_directory {
 
 class PostingListBuilder {
 public:
-	void add_docid(uint32_t docid);
+	inline void add_docid(uint32_t docid);
 	void finish();
 
 	string encoded;
