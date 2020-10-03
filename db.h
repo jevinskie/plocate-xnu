@@ -8,7 +8,7 @@ struct Header {
 	uint32_t version;  // 0.
 	uint32_t hashtable_size;
 	uint32_t extra_ht_slots;
-	uint32_t pad;   // Unused.
+	uint32_t num_docids;
 	uint64_t hash_table_offset_bytes;
 	uint64_t filename_index_offset_bytes;
 };

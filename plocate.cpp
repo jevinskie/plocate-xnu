@@ -188,12 +188,7 @@ void Corpus::get_compressed_filename_block(uint32_t docid, function<void(string)
 
 size_t Corpus::get_num_filename_blocks() const
 {
-	// The beginning of the filename blocks is the end of the filename index blocks.
-	uint64_t end;
-	complete_pread(fd, &end, sizeof(end), hdr.filename_index_offset_bytes);
-
-	// Subtract the sentinel block.
-	return (end - hdr.filename_index_offset_bytes) / sizeof(uint64_t) - 1;
+	return hdr.num_docids;
 }
 
 size_t scan_file_block(const vector<string> &needles, string_view compressed,

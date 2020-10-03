@@ -377,6 +377,7 @@ void do_build(const char *infile, const char *outfile, int block_size)
 	}
 	corpus.flush_block();
 	dprintf("Read %zu files from %s\n", corpus.num_files, infile);
+	hdr.num_docids = corpus.filename_blocks.size();
 
 	// Stick an empty block at the end as sentinel.
 	corpus.filename_blocks.push_back(ftell(outfp));
