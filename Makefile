@@ -30,4 +30,9 @@ install: all
 	$(INSTALL) -m 0755 plocate-build $(PREFIX)/sbin/
 	$(INSTALL) -m 0755 update-plocate.sh /etc/cron.daily/plocate
 
+bench.o: bench.cpp turbopfor.h
+
+bench: bench.o io_uring_engine.o TurboPFor-Integer-Compression/libic.a
+	$(CXX) -o $@ $^ $(URING_LIBS)
+
 .PHONY: clean install
