@@ -2,6 +2,7 @@ CC ?= gcc
 CXX ?= g++
 CXXFLAGS ?= -O2 -g -Wall -std=gnu++17
 CPPFLAGS=-ITurboPFor-Integer-Compression/
+LDFLAGS ?=
 INSTALL ?= install
 PREFIX ?= /usr/local
 URING_LIBS = $(shell pkg-config --libs liburing)
@@ -13,10 +14,10 @@ endif
 all: plocate plocate-build
 
 plocate: plocate.o io_uring_engine.o TurboPFor-Integer-Compression/libic.a
-	$(CXX) -o $@ $^ -lzstd $(URING_LIBS)
+	$(CXX) -o $@ $^ -lzstd $(URING_LIBS) $(LDFLAGS)
 
 plocate-build: plocate-build.o TurboPFor-Integer-Compression/libic.a
-	$(CXX) -o $@ $^ -lzstd
+	$(CXX) -o $@ $^ -lzstd $(LDFLAGS)
 
 TurboPFor-Integer-Compression/libic.a:
 	cd TurboPFor-Integer-Compression/ && $(MAKE)
@@ -33,6 +34,6 @@ install: all
 bench.o: bench.cpp turbopfor.h
 
 bench: bench.o io_uring_engine.o TurboPFor-Integer-Compression/libic.a
-	$(CXX) -o $@ $^ $(URING_LIBS)
+	$(CXX) -o $@ $^ $(URING_LIBS) $(LDFLAGS)
 
 .PHONY: clean install
