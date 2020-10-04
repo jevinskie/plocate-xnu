@@ -56,10 +56,11 @@ int main(void)
 		decode_pfor_delta1<128>(pldata, num_docids, &out2[0]);
 		for (unsigned i = 0; i < num_docids; ++i) {
 			if (out1[i] != out2[i]) {
-				for (unsigned j = 0; j < num_docids; ++j) {
-					fprintf(stderr, "%3u: reference=%u ours=%u  (diff=%d)\n", j, out1[j], out2[j], out1[j] - out2[j]);
+				if (++num_errors < 10) {
+					for (unsigned j = 0; j < num_docids; ++j) {
+						fprintf(stderr, "%3u: reference=%u ours=%u  (diff=%d)\n", j, out1[j], out2[j], out1[j] - out2[j]);
+					}
 				}
-				++num_errors;
 				break;
 			}
 		}
