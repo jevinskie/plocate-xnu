@@ -130,14 +130,14 @@ void PostingListBuilder::append_block()
 {
 	unsigned char buf[P4NENC_BOUND(128)];
 	assert(pending_docids.size() == 128);
-	unsigned char *end = p4d1enc128v32(pending_docids.data(), 128, buf, last_block_end);
+	unsigned char *end = p4d1enc32(pending_docids.data(), 128, buf, last_block_end);
 	encoded.append(reinterpret_cast<char *>(buf), reinterpret_cast<char *>(end));
 }
 
 void PostingListBuilder::write_header(uint32_t docid)
 {
 	unsigned char buf[P4NENC_BOUND(1)];
-	size_t bytes = p4nd1enc128v32(&docid, 1, buf);
+	size_t bytes = p4nd1enc32(&docid, 1, buf);
 	encoded.append(reinterpret_cast<char *>(buf), bytes);
 }
 
