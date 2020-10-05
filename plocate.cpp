@@ -391,7 +391,7 @@ void do_search_file(const vector<string> &needles, const char *filename)
 			unsigned char *pldata = reinterpret_cast<unsigned char *>(s.data());
 			if (in1.empty()) {
 				in1.resize(num + 128);
-				decode_pfor_delta1<128>(pldata, num, &in1[0]);
+				decode_pfor_delta1<128>(pldata, num, /*interleaved=*/true, &in1[0]);
 				in1.resize(num);
 				dprintf("trigram '%c%c%c' (%zu bytes) decoded to %zu entries\n", trgm & 0xff,
 				        (trgm >> 8) & 0xff, (trgm >> 16) & 0xff, len, num);
@@ -399,7 +399,7 @@ void do_search_file(const vector<string> &needles, const char *filename)
 				if (in2.size() < num + 128) {
 					in2.resize(num + 128);
 				}
-				decode_pfor_delta1<128>(pldata, num, &in2[0]);
+				decode_pfor_delta1<128>(pldata, num, /*interleaved=*/true, &in2[0]);
 
 				out.clear();
 				set_intersection(in1.begin(), in1.end(), in2.begin(), in2.begin() + num,

@@ -107,6 +107,35 @@ private:
 	unsigned bits_used = 0;
 };
 
+template<unsigned NumStreams>
+struct InterleavedBitReader {
+public:
+	InterleavedBitReader(const unsigned char *in, unsigned bits)
+		: in(in), bits(bits), mask((1U << bits) - 1) {}
+	uint32_t read()
+	{
+		uint32_t val;
+		if (bits_used + bits > 32) {
+			val = (read_le<uint32_t>(in) >> bits_used) | (read_le<uint32_t>(in + Stride) << (32 - bits_used));
+		} else {
+			val = (read_le<uint32_t>(in) >> bits_used);
+		}
+
+		bits_used += bits;
+		in += Stride * (bits_used / 32);
+		bits_used %= 32;
+
+		return val & mask;
+	}
+
+private:
+	static constexpr unsigned Stride = NumStreams * sizeof(uint32_t);
+	const unsigned char *in;
+	const unsigned bits;
+	const unsigned mask;
+	unsigned bits_used = 0;
+};
+
 // Does not properly account for overflow.
 inline unsigned div_round_up(unsigned val, unsigned div)
 {
@@ -155,6 +184,30 @@ const unsigned char *decode_for(const unsigned char *in, unsigned num, Docid *ou
 	return in + bytes_for_packed_bits(num, bit_width);
 }
 
+// Like decode_for(), but the values are organized in four independent streams,
+// for SIMD (presumably SSE2). Supports a whole block only.
+template<unsigned BlockSize, class Docid>
+const unsigned char *decode_for_interleaved(const unsigned char *in, Docid *out)
+{
+	const unsigned bit_width = *in++ & 0x3f;
+
+	InterleavedBitReader<4> bs0(in + 0 * sizeof(uint32_t), bit_width);
+	InterleavedBitReader<4> bs1(in + 1 * sizeof(uint32_t), bit_width);
+	InterleavedBitReader<4> bs2(in + 2 * sizeof(uint32_t), bit_width);
+	InterleavedBitReader<4> bs3(in + 3 * sizeof(uint32_t), bit_width);
+	for (unsigned i = 0; i < BlockSize / 4; ++i) {
+		out[i * 4 + 0] = bs0.read();
+		out[i * 4 + 1] = bs1.read();
+		out[i * 4 + 2] = bs2.read();
+		out[i * 4 + 3] = bs3.read();
+	}
+	Docid *prev_out = out - 1;
+	for (unsigned i = 0; i < BlockSize; ++i) {
+		out[i] += prev_out[i] + 1;
+	}
+	return in + bytes_for_packed_bits(BlockSize, bit_width);
+}
+
 // PFor block with bitmap exceptions. Layout:
 //
 //  - Bit width (6 bits) | type << 6
@@ -199,6 +252,52 @@ const unsigned char *decode_pfor_bitmap(const unsigned char *in, unsigned num, D
 		out[i] = (out[i] | bs.read()) + prev_out[i] + 1;
 	}
 	return in + bytes_for_packed_bits(num, bit_width);
+}
+
+// Like decode_pfor_bitmap(), but the base values are organized in four
+// independent streams, for SIMD (presumably SSE2). Supports a whole block only.
+template<unsigned BlockSize, class Docid>
+const unsigned char *decode_pfor_bitmap_interleaved(const unsigned char *in, Docid *out)
+{
+	memset(out, 0, BlockSize * sizeof(Docid));
+
+	const unsigned bit_width = *in++ & 0x3f;
+	const unsigned exception_bit_width = *in++;
+
+	// Decode exceptions.
+	{
+		const uint64_t *exception_bitmap_ptr = reinterpret_cast<const uint64_t *>(in);
+		in += div_round_up(BlockSize, 8);
+
+		int num_exceptions = 0;
+
+		BitReader bs(in, exception_bit_width);
+		for (unsigned i = 0; i < BlockSize; i += 64, ++exception_bitmap_ptr) {
+			uint64_t exceptions = read_le<uint64_t>(exception_bitmap_ptr);
+			for (; exceptions != 0; exceptions &= exceptions - 1, ++num_exceptions) {
+				unsigned idx = (ffsll(exceptions) - 1) + i;
+				out[idx] = bs.read() << bit_width;
+			}
+		}
+		in += bytes_for_packed_bits(num_exceptions, exception_bit_width);
+	}
+
+	// Decode the base values, and delta-decode.
+	InterleavedBitReader<4> bs0(in + 0 * sizeof(uint32_t), bit_width);
+	InterleavedBitReader<4> bs1(in + 1 * sizeof(uint32_t), bit_width);
+	InterleavedBitReader<4> bs2(in + 2 * sizeof(uint32_t), bit_width);
+	InterleavedBitReader<4> bs3(in + 3 * sizeof(uint32_t), bit_width);
+	for (unsigned i = 0; i < BlockSize / 4; ++i) {
+		out[i * 4 + 0] |= bs0.read();
+		out[i * 4 + 1] |= bs1.read();
+		out[i * 4 + 2] |= bs2.read();
+		out[i * 4 + 3] |= bs3.read();
+	}
+	Docid *prev_out = out - 1;
+	for (unsigned i = 0; i < BlockSize; ++i) {
+		out[i] += prev_out[i] + 1;
+	}
+	return in + bytes_for_packed_bits(BlockSize, bit_width);
 }
 
 // PFor block with variable-byte exceptions. Layout:
@@ -253,6 +352,56 @@ const unsigned char *decode_pfor_vb(const unsigned char *in, unsigned num, Docid
 	return in;
 }
 
+// Like decode_pfor_vb(), but the base values are organized in four
+// independent streams, for SIMD (presumably SSE2). Supports a whole block only.
+template<unsigned BlockSize, class Docid>
+const unsigned char *decode_pfor_vb_interleaved(const unsigned char *in, Docid *out)
+{
+	const unsigned bit_width = *in++ & 0x3f;
+	unsigned num_exceptions = *in++;
+
+	// Decode the base values.
+	InterleavedBitReader<4> bs0(in + 0 * sizeof(uint32_t), bit_width);
+	InterleavedBitReader<4> bs1(in + 1 * sizeof(uint32_t), bit_width);
+	InterleavedBitReader<4> bs2(in + 2 * sizeof(uint32_t), bit_width);
+	InterleavedBitReader<4> bs3(in + 3 * sizeof(uint32_t), bit_width);
+	for (unsigned i = 0; i < BlockSize / 4; ++i) {
+		out[i * 4 + 0] = bs0.read();
+		out[i * 4 + 1] = bs1.read();
+		out[i * 4 + 2] = bs2.read();
+		out[i * 4 + 3] = bs3.read();
+	}
+	in += bytes_for_packed_bits(BlockSize, bit_width);
+
+	// Decode exceptions.
+	Docid exceptions[BlockSize];
+	if (*in == 255) {
+		++in;
+		for (unsigned i = 0; i < num_exceptions; ++i) {
+			exceptions[i] = read_le<Docid>(in);
+			in += sizeof(Docid);
+		}
+	} else {
+		for (unsigned i = 0; i < num_exceptions; ++i) {
+			in = read_vb(in, &exceptions[i]);
+		}
+	}
+
+	// Apply exceptions.
+	for (unsigned i = 0; i < num_exceptions; ++i) {
+		unsigned idx = *in++;
+		out[idx] |= exceptions[i] << bit_width;
+	}
+
+	// Delta-decode.
+	Docid *prev_out = out - 1;
+	for (unsigned i = 0; i < BlockSize; ++i) {
+		out[i] = out[i] + prev_out[i] + 1;
+	}
+
+	return in;
+}
+
 enum BlockType {
 	FOR = 0,
 	PFOR_VB = 1,
@@ -261,7 +410,7 @@ enum BlockType {
 };
 
 template<unsigned BlockSize, class Docid>
-const unsigned char *decode_pfor_delta1(const unsigned char *in, unsigned num, Docid *out)
+const unsigned char *decode_pfor_delta1(const unsigned char *in, unsigned num, bool interleaved, Docid *out)
 {
 	if (num == 0) {
 		return in;
@@ -272,16 +421,31 @@ const unsigned char *decode_pfor_delta1(const unsigned char *in, unsigned num, D
 		const unsigned num_this_block = std::min<unsigned>(num - i, BlockSize);
 		switch (in[0] >> 6) {
 		case BlockType::FOR:
-			dprintf("%d+%d: blocktype=%d (for), bitwidth=%d\n", i, num_this_block, in[0] >> 6, in[0] & 0x3f);
-			in = decode_for(in, num_this_block, out);
+			if (interleaved && num_this_block == BlockSize) {
+				dprintf("%d+%d: blocktype=%d (for, interleaved), bitwidth=%d\n", i, num_this_block, in[0] >> 6, in[0] & 0x3f);
+				in = decode_for_interleaved<BlockSize>(in, out);
+			} else {
+				dprintf("%d+%d: blocktype=%d (for), bitwidth=%d\n", i, num_this_block, in[0] >> 6, in[0] & 0x3f);
+				in = decode_for(in, num_this_block, out);
+			}
 			break;
 		case BlockType::PFOR_VB:
-			dprintf("%d+%d: blocktype=%d (pfor + vb), bitwidth=%d\n", i, num_this_block, in[0] >> 6, in[0] & 0x3f);
-			in = decode_pfor_vb<BlockSize>(in, num_this_block, out);
+			if (interleaved && num_this_block == BlockSize) {
+				dprintf("%d+%d: blocktype=%d (pfor + vb, interleaved), bitwidth=%d\n", i, num_this_block, in[0] >> 6, in[0] & 0x3f);
+				in = decode_pfor_vb_interleaved<BlockSize>(in, out);
+			} else {
+				dprintf("%d+%d: blocktype=%d (pfor + vb), bitwidth=%d\n", i, num_this_block, in[0] >> 6, in[0] & 0x3f);
+				in = decode_pfor_vb<BlockSize>(in, num_this_block, out);
+			}
 			break;
 		case BlockType::PFOR_BITMAP:
-			dprintf("%d+%d: blocktype=%d (pfor + bitmap), bitwidth=%d\n", i, num_this_block, in[0] >> 6, in[0] & 0x3f);
-			in = decode_pfor_bitmap(in, num_this_block, out);
+			if (interleaved && num_this_block == BlockSize) {
+				dprintf("%d+%d: blocktype=%d (pfor + bitmap, interleaved), bitwidth=%d\n", i, num_this_block, in[0] >> 6, in[0] & 0x3f);
+				in = decode_pfor_bitmap_interleaved<BlockSize>(in, out);
+			} else {
+				dprintf("%d+%d: blocktype=%d (pfor + bitmap), bitwidth=%d\n", i, num_this_block, in[0] >> 6, in[0] & 0x3f);
+				in = decode_pfor_bitmap(in, num_this_block, out);
+			}
 			break;
 		case BlockType::CONSTANT:
 			dprintf("%d+%d: blocktype=%d (constant), bitwidth=%d\n", i, num_this_block, in[0] >> 6, in[0] & 0x3f);
