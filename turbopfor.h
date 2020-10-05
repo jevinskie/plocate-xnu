@@ -3,9 +3,10 @@
 
 // A reimplementation of parts of the TurboPFor codecs, using the same
 // storage format. These are not as fast as the reference implementation
-// (about 1/3 of the performance), and do not support the same breadth of
-// codecs (in particular, only delta-plus-1 is implemented, and only 32-bit
-// docids are tested), but aim to be more portable and easier-to-understand.
+// (about 60% of the performance, averaged over a real plocate corpus),
+// and do not support the same breadth of codecs (in particular, only
+// delta-plus-1 is implemented, and only 32-bit docids are tested),
+// but aim to be more portable and (ideally) easier-to-understand.
 // In particular, they will compile on x86 without SSE4.1 or AVX support.
 //
 // The main reference is https://michael.stapelberg.ch/posts/2019-02-05-turbopfor-analysis/,
@@ -19,6 +20,29 @@
 #include <limits.h>
 
 #include <algorithm>
+
+#if defined(__i386__) || defined(__x86_64__)
+#define COULD_HAVE_SSE2
+#include <immintrin.h>
+#endif
+
+// Forward declarations to declare to the template code below that they exist.
+// (These must seemingly be non-templates for function multiversioning to work.)
+__attribute__((target("default")))
+const unsigned char *decode_for_interleaved_128_32(const unsigned char *in, uint32_t *out);
+__attribute__((target("default")))
+const unsigned char *decode_pfor_bitmap_interleaved_128_32(const unsigned char *in, uint32_t *out);
+__attribute__((target("default")))
+const unsigned char *decode_pfor_vb_interleaved_128_32(const unsigned char *in, uint32_t *out);
+
+#ifdef COULD_HAVE_SSE2
+__attribute__((target("sse2")))
+const unsigned char *decode_for_interleaved_128_32(const unsigned char *in, uint32_t *out);
+__attribute__((target("sse2")))
+const unsigned char *decode_pfor_bitmap_interleaved_128_32(const unsigned char *in, uint32_t *out);
+__attribute__((target("sse2")))
+const unsigned char *decode_pfor_vb_interleaved_128_32(const unsigned char *in, uint32_t *out);
+#endif
 
 template<class Docid>
 Docid read_le(const void *in)
@@ -184,10 +208,60 @@ const unsigned char *decode_for(const unsigned char *in, unsigned num, Docid *ou
 	return in + bytes_for_packed_bits(num, bit_width);
 }
 
+#ifdef COULD_HAVE_SSE2
+template<unsigned BlockSize>
+__attribute__((target("sse2")))
+inline void delta_decode_sse2(uint32_t *out)
+{
+	// Use 4/3/2/1 as delta instead of fixed 1, so that we can do the prev_val + delta
+	// in parallel with something else.
+	const __m128i delta = _mm_set_epi32(4, 3, 2, 1);
+	__m128i prev_val = _mm_set1_epi32(out[-1]);
+	__m128i *outvec = reinterpret_cast<__m128i *>(out);
+	for (unsigned i = 0; i < BlockSize / 4; ++i) {
+		__m128i val = _mm_loadu_si128(outvec + i);
+		val = _mm_add_epi32(val, _mm_slli_si128(val, 4));
+		val = _mm_add_epi32(val, _mm_slli_si128(val, 8));
+		val = _mm_add_epi32(val, _mm_add_epi32(prev_val, delta));
+		_mm_storeu_si128(outvec + i, val);
+
+		prev_val = _mm_shuffle_epi32(val, _MM_SHUFFLE(3, 3, 3, 3));
+	}
+}
+
+template<unsigned BlockSize, bool OrWithExisting>
+__attribute__((target("sse2")))
+const unsigned char *decode_bitmap_sse2(const unsigned char *in, unsigned bit_width, uint32_t *out)
+{
+	const __m128i *invec = reinterpret_cast<const __m128i *>(in);
+	__m128i *outvec = reinterpret_cast<__m128i *>(out);
+	const __m128i mask = _mm_set1_epi32((1U << bit_width) - 1);
+	unsigned bits_used = 0;
+	for (unsigned i = 0; i < BlockSize / 4; ++i) {
+		__m128i val = _mm_srli_epi32(_mm_loadu_si128(invec), bits_used);
+		if (bits_used + bit_width > 32) {
+			__m128i val_upper = _mm_slli_epi32(_mm_loadu_si128(invec + 1), 32 - bits_used);
+			val = _mm_or_si128(val, val_upper);
+		}
+		val = _mm_and_si128(val, mask);
+		if constexpr (OrWithExisting) {
+			val = _mm_or_si128(val, _mm_loadu_si128(outvec + i));
+		}
+		_mm_storeu_si128(outvec + i, val);
+
+		bits_used += bit_width;
+		invec += bits_used / 32;
+		bits_used %= 32;
+	}
+	in += bytes_for_packed_bits(BlockSize, bit_width);
+	return in;
+}
+#endif
+
 // Like decode_for(), but the values are organized in four independent streams,
 // for SIMD (presumably SSE2). Supports a whole block only.
 template<unsigned BlockSize, class Docid>
-const unsigned char *decode_for_interleaved(const unsigned char *in, Docid *out)
+const unsigned char *decode_for_interleaved_generic(const unsigned char *in, Docid *out)
 {
 	const unsigned bit_width = *in++ & 0x3f;
 
@@ -207,6 +281,38 @@ const unsigned char *decode_for_interleaved(const unsigned char *in, Docid *out)
 	}
 	return in + bytes_for_packed_bits(BlockSize, bit_width);
 }
+
+template<unsigned BlockSize, class Docid>
+const unsigned char *decode_for_interleaved(const unsigned char *in, Docid *out)
+{
+	if constexpr (BlockSize == 128 && sizeof(Docid) == sizeof(uint32_t)) {
+		return decode_for_interleaved_128_32(in, out);
+	} else {
+		return decode_for_interleaved_generic(in, out);
+	}
+}
+
+__attribute__((target("default")))
+const unsigned char *decode_for_interleaved_128_32(const unsigned char *in, uint32_t *out)
+{
+	return decode_for_interleaved_generic<128>(in, out);
+}
+
+#ifdef COULD_HAVE_SSE2
+// Specialized version for SSE2.
+__attribute__((target("sse2")))
+const unsigned char *decode_for_interleaved_128_32(const unsigned char *in, uint32_t *out)
+{
+	constexpr unsigned BlockSize = 128;
+
+	const unsigned bit_width = *in++ & 0x3f;
+
+	in = decode_bitmap_sse2<BlockSize, false>(in, bit_width, out);
+	delta_decode_sse2<BlockSize>(out);
+
+	return in;
+}
+#endif
 
 template<class Docid>
 const unsigned char *decode_pfor_bitmap_exceptions(const unsigned char *in, unsigned num, unsigned bit_width, Docid *out)
@@ -261,7 +367,7 @@ const unsigned char *decode_pfor_bitmap(const unsigned char *in, unsigned num, D
 // Like decode_pfor_bitmap(), but the base values are organized in four
 // independent streams, for SIMD (presumably SSE2). Supports a whole block only.
 template<unsigned BlockSize, class Docid>
-const unsigned char *decode_pfor_bitmap_interleaved(const unsigned char *in, Docid *out)
+const unsigned char *decode_pfor_bitmap_interleaved_generic(const unsigned char *in, Docid *out)
 {
 	memset(out, 0, BlockSize * sizeof(Docid));
 
@@ -288,6 +394,42 @@ const unsigned char *decode_pfor_bitmap_interleaved(const unsigned char *in, Doc
 	}
 	return in + bytes_for_packed_bits(BlockSize, bit_width);
 }
+
+template<unsigned BlockSize, class Docid>
+const unsigned char *decode_pfor_bitmap_interleaved(const unsigned char *in, Docid *out)
+{
+	if constexpr (BlockSize == 128 && sizeof(Docid) == sizeof(uint32_t)) {
+		return decode_pfor_bitmap_interleaved_128_32(in, out);
+	} else {
+		return decode_pfor_bitmap_interleaved_generic(in, out);
+	}
+}
+
+__attribute__((target("default")))
+const unsigned char *decode_pfor_bitmap_interleaved_128_32(const unsigned char *in, uint32_t *out)
+{
+	return decode_pfor_bitmap_interleaved_generic<128>(in, out);
+}
+
+#ifdef COULD_HAVE_SSE2
+// Specialized version for SSE2.
+__attribute__((target("sse2")))
+const unsigned char *decode_pfor_bitmap_interleaved_128_32(const unsigned char *in, uint32_t *out)
+{
+	constexpr unsigned BlockSize = 128;
+	using Docid = uint32_t;
+
+	memset(out, 0, BlockSize * sizeof(Docid));
+
+	const unsigned bit_width = *in++ & 0x3f;
+
+	in = decode_pfor_bitmap_exceptions(in, BlockSize, bit_width, out);
+	in = decode_bitmap_sse2<BlockSize, true>(in, bit_width, out);
+	delta_decode_sse2<BlockSize>(out);
+
+	return in;
+}
+#endif
 
 // PFor block with variable-byte exceptions. Layout:
 //
@@ -344,7 +486,7 @@ const unsigned char *decode_pfor_vb(const unsigned char *in, unsigned num, Docid
 // Like decode_pfor_vb(), but the base values are organized in four
 // independent streams, for SIMD (presumably SSE2). Supports a whole block only.
 template<unsigned BlockSize, class Docid>
-const unsigned char *decode_pfor_vb_interleaved(const unsigned char *in, Docid *out)
+const unsigned char *decode_pfor_vb_interleaved_generic(const unsigned char *in, Docid *out)
 {
 	const unsigned bit_width = *in++ & 0x3f;
 	unsigned num_exceptions = *in++;
@@ -387,6 +529,60 @@ const unsigned char *decode_pfor_vb_interleaved(const unsigned char *in, Docid *
 	for (unsigned i = 0; i < BlockSize; ++i) {
 		out[i] = prev_val = out[i] + prev_val + 1;
 	}
+
+	return in;
+}
+
+template<unsigned BlockSize, class Docid>
+const unsigned char *decode_pfor_vb_interleaved(const unsigned char *in, Docid *out)
+{
+	if constexpr (BlockSize == 128 && sizeof(Docid) == sizeof(uint32_t)) {
+		return decode_pfor_vb_interleaved_128_32(in, out);
+	} else {
+		return decode_pfor_vb_interleaved_generic(in, out);
+	}
+}
+
+__attribute__((target("default")))
+const unsigned char *decode_pfor_vb_interleaved_128_32(const unsigned char *in, uint32_t *out)
+{
+	return decode_pfor_vb_interleaved_generic<128>(in, out);
+}
+
+// Specialized version for SSE2.
+__attribute__((target("sse2")))
+const unsigned char *decode_pfor_vb_interleaved_128_32(const unsigned char *in, uint32_t *out)
+{
+	constexpr unsigned BlockSize = 128;
+	using Docid = uint32_t;
+
+	const unsigned bit_width = *in++ & 0x3f;
+	unsigned num_exceptions = *in++;
+
+	// Decode the base values.
+	in = decode_bitmap_sse2<BlockSize, false>(in, bit_width, out);
+
+	// Decode exceptions.
+	Docid exceptions[BlockSize];
+	if (*in == 255) {
+		++in;
+		for (unsigned i = 0; i < num_exceptions; ++i) {
+			exceptions[i] = read_le<Docid>(in);
+			in += sizeof(Docid);
+		}
+	} else {
+		for (unsigned i = 0; i < num_exceptions; ++i) {
+			in = read_vb(in, &exceptions[i]);
+		}
+	}
+
+	// Apply exceptions.
+	for (unsigned i = 0; i < num_exceptions; ++i) {
+		unsigned idx = *in++;
+		out[idx] |= exceptions[i] << bit_width;
+	}
+
+	delta_decode_sse2<BlockSize>(out);
 
 	return in;
 }
