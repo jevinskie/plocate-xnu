@@ -160,9 +160,9 @@ const unsigned char *decode_constant(const unsigned char *in, unsigned num, Doci
 		val &= ((1U << bit_width) - 1);
 	}
 
-	Docid *prev_out = out - 1;
+	Docid prev_val = out[-1];
 	for (unsigned i = 0; i < num; ++i) {
-		out[i] = val + prev_out[i] + 1;
+		out[i] = prev_val = val + prev_val + 1;
 	}
 	return in + div_round_up(bit_width, 8);
 }
@@ -176,10 +176,10 @@ const unsigned char *decode_for(const unsigned char *in, unsigned num, Docid *ou
 {
 	const unsigned bit_width = *in++ & 0x3f;
 
-	Docid *prev_out = out - 1;
+	Docid prev_val = out[-1];
 	BitReader bs(in, bit_width);
 	for (unsigned i = 0; i < num; ++i) {
-		out[i] = bs.read() + prev_out[i] + 1;
+		prev_val = out[i] = bs.read() + prev_val + 1;
 	}
 	return in + bytes_for_packed_bits(num, bit_width);
 }
@@ -201,9 +201,9 @@ const unsigned char *decode_for_interleaved(const unsigned char *in, Docid *out)
 		out[i * 4 + 2] = bs2.read();
 		out[i * 4 + 3] = bs3.read();
 	}
-	Docid *prev_out = out - 1;
+	Docid prev_val = out[-1];
 	for (unsigned i = 0; i < BlockSize; ++i) {
-		out[i] += prev_out[i] + 1;
+		out[i] = prev_val = out[i] + prev_val + 1;
 	}
 	return in + bytes_for_packed_bits(BlockSize, bit_width);
 }
@@ -246,10 +246,10 @@ const unsigned char *decode_pfor_bitmap(const unsigned char *in, unsigned num, D
 	}
 
 	// Decode the base values, and delta-decode.
-	Docid *prev_out = out - 1;
+	Docid prev_val = out[-1];
 	BitReader bs(in, bit_width);
 	for (unsigned i = 0; i < num; ++i) {
-		out[i] = (out[i] | bs.read()) + prev_out[i] + 1;
+		out[i] = prev_val = (out[i] | bs.read()) + prev_val + 1;
 	}
 	return in + bytes_for_packed_bits(num, bit_width);
 }
@@ -293,9 +293,9 @@ const unsigned char *decode_pfor_bitmap_interleaved(const unsigned char *in, Doc
 		out[i * 4 + 2] |= bs2.read();
 		out[i * 4 + 3] |= bs3.read();
 	}
-	Docid *prev_out = out - 1;
+	Docid prev_val = out[-1];
 	for (unsigned i = 0; i < BlockSize; ++i) {
-		out[i] += prev_out[i] + 1;
+		out[i] = prev_val = out[i] + prev_val + 1;
 	}
 	return in + bytes_for_packed_bits(BlockSize, bit_width);
 }
@@ -344,9 +344,9 @@ const unsigned char *decode_pfor_vb(const unsigned char *in, unsigned num, Docid
 	}
 
 	// Delta-decode.
-	Docid *prev_out = out - 1;
+	Docid prev_val = out[-1];
 	for (unsigned i = 0; i < num; ++i) {
-		out[i] = out[i] + prev_out[i] + 1;
+		out[i] = prev_val = out[i] + prev_val + 1;
 	}
 
 	return in;
@@ -394,9 +394,9 @@ const unsigned char *decode_pfor_vb_interleaved(const unsigned char *in, Docid *
 	}
 
 	// Delta-decode.
-	Docid *prev_out = out - 1;
+	Docid prev_val = out[-1];
 	for (unsigned i = 0; i < BlockSize; ++i) {
-		out[i] = out[i] + prev_out[i] + 1;
+		out[i] = prev_val = out[i] + prev_val + 1;
 	}
 
 	return in;
