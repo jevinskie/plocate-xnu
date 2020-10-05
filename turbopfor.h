@@ -208,6 +208,31 @@ const unsigned char *decode_for_interleaved(const unsigned char *in, Docid *out)
 	return in + bytes_for_packed_bits(BlockSize, bit_width);
 }
 
+template<class Docid>
+const unsigned char *decode_pfor_bitmap_exceptions(const unsigned char *in, unsigned num, unsigned bit_width, Docid *out)
+{
+	const unsigned exception_bit_width = *in++;
+	const uint64_t *exception_bitmap_ptr = reinterpret_cast<const uint64_t *>(in);
+	in += div_round_up(num, 8);
+
+	int num_exceptions = 0;
+
+	BitReader bs(in, exception_bit_width);
+	for (unsigned i = 0; i < num; i += 64, ++exception_bitmap_ptr) {
+		uint64_t exceptions = read_le<uint64_t>(exception_bitmap_ptr);
+		if (num - i < 64) {
+			// We've read some bytes past the end, so clear out the junk bits.
+			exceptions &= (1ULL << (num - i)) - 1;
+		}
+		for (; exceptions != 0; exceptions &= exceptions - 1, ++num_exceptions) {
+			unsigned idx = (ffsll(exceptions) - 1) + i;
+			out[idx] = bs.read() << bit_width;
+		}
+	}
+	in += bytes_for_packed_bits(num_exceptions, exception_bit_width);
+	return in;
+}
+
 // PFor block with bitmap exceptions. Layout:
 //
 //  - Bit width (6 bits) | type << 6
@@ -221,29 +246,8 @@ const unsigned char *decode_pfor_bitmap(const unsigned char *in, unsigned num, D
 	memset(out, 0, num * sizeof(Docid));
 
 	const unsigned bit_width = *in++ & 0x3f;
-	const unsigned exception_bit_width = *in++;
 
-	// Decode exceptions.
-	{
-		const uint64_t *exception_bitmap_ptr = reinterpret_cast<const uint64_t *>(in);
-		in += div_round_up(num, 8);
-
-		int num_exceptions = 0;
-
-		BitReader bs(in, exception_bit_width);
-		for (unsigned i = 0; i < num; i += 64, ++exception_bitmap_ptr) {
-			uint64_t exceptions = read_le<uint64_t>(exception_bitmap_ptr);
-			if (num - i < 64) {
-				// We've read some bytes past the end, so clear out the junk bits.
-				exceptions &= (1ULL << (num - i)) - 1;
-			}
-			for (; exceptions != 0; exceptions &= exceptions - 1, ++num_exceptions) {
-				unsigned idx = (ffsll(exceptions) - 1) + i;
-				out[idx] = bs.read() << bit_width;
-			}
-		}
-		in += bytes_for_packed_bits(num_exceptions, exception_bit_width);
-	}
+	in = decode_pfor_bitmap_exceptions(in, num, bit_width, out);
 
 	// Decode the base values, and delta-decode.
 	Docid prev_val = out[-1];
@@ -262,27 +266,10 @@ const unsigned char *decode_pfor_bitmap_interleaved(const unsigned char *in, Doc
 	memset(out, 0, BlockSize * sizeof(Docid));
 
 	const unsigned bit_width = *in++ & 0x3f;
-	const unsigned exception_bit_width = *in++;
 
-	// Decode exceptions.
-	{
-		const uint64_t *exception_bitmap_ptr = reinterpret_cast<const uint64_t *>(in);
-		in += div_round_up(BlockSize, 8);
+	in = decode_pfor_bitmap_exceptions(in, BlockSize, bit_width, out);
 
-		int num_exceptions = 0;
-
-		BitReader bs(in, exception_bit_width);
-		for (unsigned i = 0; i < BlockSize; i += 64, ++exception_bitmap_ptr) {
-			uint64_t exceptions = read_le<uint64_t>(exception_bitmap_ptr);
-			for (; exceptions != 0; exceptions &= exceptions - 1, ++num_exceptions) {
-				unsigned idx = (ffsll(exceptions) - 1) + i;
-				out[idx] = bs.read() << bit_width;
-			}
-		}
-		in += bytes_for_packed_bits(num_exceptions, exception_bit_width);
-	}
-
-	// Decode the base values, and delta-decode.
+	// Decode the base values.
 	InterleavedBitReader<4> bs0(in + 0 * sizeof(uint32_t), bit_width);
 	InterleavedBitReader<4> bs1(in + 1 * sizeof(uint32_t), bit_width);
 	InterleavedBitReader<4> bs2(in + 2 * sizeof(uint32_t), bit_width);
@@ -293,6 +280,8 @@ const unsigned char *decode_pfor_bitmap_interleaved(const unsigned char *in, Doc
 		out[i * 4 + 2] |= bs2.read();
 		out[i * 4 + 3] |= bs3.read();
 	}
+
+	// Delta-decode.
 	Docid prev_val = out[-1];
 	for (unsigned i = 0; i < BlockSize; ++i) {
 		out[i] = prev_val = out[i] + prev_val + 1;
