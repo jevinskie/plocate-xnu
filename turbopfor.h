@@ -160,6 +160,33 @@ private:
 	unsigned bits_used = 0;
 };
 
+#ifdef COULD_HAVE_SSE2
+struct InterleavedBitReaderSSE2 {
+public:
+	InterleavedBitReaderSSE2(const unsigned char *in, unsigned bits)
+		: in(reinterpret_cast<const __m128i *>(in)), bits(bits), mask(_mm_set1_epi32((1U << bits) - 1)) {}
+	__m128i read() {
+		__m128i val = _mm_srli_epi32(_mm_loadu_si128(in), bits_used);
+		if (bits_used + bits > 32) {
+			__m128i val_upper = _mm_slli_epi32(_mm_loadu_si128(in + 1), 32 - bits_used);
+			val = _mm_or_si128(val, val_upper);
+		}
+		val = _mm_and_si128(val, mask);
+
+		bits_used += bits;
+		in += bits_used / 32;
+		bits_used %= 32;
+		return val;
+	}
+
+private:
+	const __m128i *in;
+	const unsigned bits;
+	const __m128i mask;
+	unsigned bits_used = 0;
+};
+#endif
+
 // Does not properly account for overflow.
 inline unsigned div_round_up(unsigned val, unsigned div)
 {
@@ -244,18 +271,11 @@ template<unsigned BlockSize, bool OrWithExisting, bool DeltaDecode>
 __attribute__((target("sse2")))
 const unsigned char *decode_bitmap_sse2(const unsigned char *in, unsigned bit_width, uint32_t *out)
 {
-	const __m128i *invec = reinterpret_cast<const __m128i *>(in);
 	__m128i *outvec = reinterpret_cast<__m128i *>(out);
-	const __m128i mask = _mm_set1_epi32((1U << bit_width) - 1);
-	unsigned bits_used = 0;
 	DeltaDecoderSSE2 delta(out[-1]);
+	InterleavedBitReaderSSE2 bs(in, bit_width);
 	for (unsigned i = 0; i < BlockSize / 4; ++i) {
-		__m128i val = _mm_srli_epi32(_mm_loadu_si128(invec), bits_used);
-		if (bits_used + bit_width > 32) {
-			__m128i val_upper = _mm_slli_epi32(_mm_loadu_si128(invec + 1), 32 - bits_used);
-			val = _mm_or_si128(val, val_upper);
-		}
-		val = _mm_and_si128(val, mask);
+		__m128i val = bs.read();
 		if constexpr (OrWithExisting) {
 			val = _mm_or_si128(val, _mm_loadu_si128(outvec + i));
 		}
@@ -263,10 +283,6 @@ const unsigned char *decode_bitmap_sse2(const unsigned char *in, unsigned bit_wi
 			val = delta.decode(val);
 		}
 		_mm_storeu_si128(outvec + i, val);
-
-		bits_used += bit_width;
-		invec += bits_used / 32;
-		bits_used %= 32;
 	}
 	in += bytes_for_packed_bits(BlockSize, bit_width);
 	return in;
