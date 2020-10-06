@@ -82,7 +82,7 @@ private:
 	void write_header(uint32_t docid);
 	void append_block();
 
-	vector<uint32_t> pending_docids;
+	vector<uint32_t> pending_deltas;
 
 	uint32_t last_block_end, last_docid = -1;
 };
@@ -102,11 +102,11 @@ void PostingListBuilder::add_docid(uint32_t docid)
 		return;
 	}
 
+	pending_deltas.push_back(docid - last_docid - 1);
 	last_docid = docid;
-	pending_docids.push_back(docid);
-	if (pending_docids.size() == 128) {
+	if (pending_deltas.size() == 128) {
 		append_block();
-		pending_docids.clear();
+		pending_deltas.clear();
 		last_block_end = docid;
 	}
 	++num_docids;
@@ -114,7 +114,7 @@ void PostingListBuilder::add_docid(uint32_t docid)
 
 void PostingListBuilder::finish()
 {
-	if (pending_docids.empty()) {
+	if (pending_deltas.empty()) {
 		return;
 	}
 
@@ -122,15 +122,15 @@ void PostingListBuilder::finish()
 
 	// No interleaving for partial blocks.
 	unsigned char buf[P4NENC_BOUND(128)];
-	unsigned char *end = p4d1enc32(pending_docids.data(), pending_docids.size(), buf, last_block_end);
+	unsigned char *end = p4enc32(pending_deltas.data(), pending_deltas.size(), buf);
 	encoded.append(reinterpret_cast<char *>(buf), reinterpret_cast<char *>(end));
 }
 
 void PostingListBuilder::append_block()
 {
 	unsigned char buf[P4NENC_BOUND(128)];
-	assert(pending_docids.size() == 128);
-	unsigned char *end = p4d1enc128v32(pending_docids.data(), 128, buf, last_block_end);
+	assert(pending_deltas.size() == 128);
+	unsigned char *end = p4enc128v32(pending_deltas.data(), 128, buf);
 	encoded.append(reinterpret_cast<char *>(buf), reinterpret_cast<char *>(end));
 }
 
