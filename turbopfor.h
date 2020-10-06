@@ -44,6 +44,15 @@ __attribute__((target("sse2")))
 const unsigned char *decode_pfor_vb_interleaved_128_32(const unsigned char *in, uint32_t *out);
 #endif
 
+constexpr uint32_t mask_for_bits(unsigned bit_width)
+{
+	if (bit_width == 32) {
+		return 0xFFFFFFFF;
+	} else {
+		return (1U << bit_width) - 1;
+	}
+}
+
 template<class Docid>
 Docid read_le(const void *in)
 {
@@ -112,7 +121,7 @@ const unsigned char *read_vb(const unsigned char *in, Docid *out)
 struct BitReader {
 public:
 	BitReader(const unsigned char *in, unsigned bits)
-		: in(in), bits(bits), mask((1U << bits) - 1) {}
+		: in(in), bits(bits), mask(mask_for_bits(bits)) {}
 	uint32_t read()
 	{
 		uint32_t val = (read_le<uint32_t>(in) >> bits_used) & mask;
@@ -135,7 +144,7 @@ template<unsigned NumStreams>
 struct InterleavedBitReader {
 public:
 	InterleavedBitReader(const unsigned char *in, unsigned bits)
-		: in(in), bits(bits), mask((1U << bits) - 1) {}
+		: in(in), bits(bits), mask(mask_for_bits(bits)) {}
 	uint32_t read()
 	{
 		uint32_t val;
@@ -164,7 +173,7 @@ private:
 struct InterleavedBitReaderSSE2 {
 public:
 	InterleavedBitReaderSSE2(const unsigned char *in, unsigned bits)
-		: in(reinterpret_cast<const __m128i *>(in)), bits(bits), mask(_mm_set1_epi32((1U << bits) - 1)) {}
+		: in(reinterpret_cast<const __m128i *>(in)), bits(bits), mask(_mm_set1_epi32(mask_for_bits(bits))) {}
 	__m128i read() {
 		__m128i val = _mm_srli_epi32(_mm_loadu_si128(in), bits_used);
 		if (bits_used + bits > 32) {
@@ -208,7 +217,7 @@ const unsigned char *decode_constant(const unsigned char *in, unsigned num, Doci
 	const unsigned bit_width = *in++ & 0x3f;
 	Docid val = read_le<Docid>(in);
 	if (bit_width < sizeof(Docid) * 8) {
-		val &= ((1U << bit_width) - 1);
+		val &= mask_for_bits(bit_width);
 	}
 
 	Docid prev_val = out[-1];
