@@ -505,7 +505,6 @@ __attribute__((target("sse2")))
 const unsigned char *decode_pfor_bitmap_interleaved_128_32(const unsigned char *in, uint32_t *out)
 {
 	constexpr unsigned BlockSize = 128;
-	using Docid = uint32_t;
 
 	// Set all output values to zero, before the exceptions are filled in.
 	#pragma GCC unroll 4
