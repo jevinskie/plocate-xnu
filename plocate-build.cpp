@@ -144,16 +144,18 @@ void PostingListBuilder::write_header(uint32_t docid)
 class Corpus {
 public:
 	Corpus(FILE *outfp, size_t block_size)
-		: invindex(new PostingListBuilder*[NUM_TRIGRAMS]), outfp(outfp), block_size(block_size) {}
+		: invindex(new PostingListBuilder *[NUM_TRIGRAMS]), outfp(outfp), block_size(block_size) {}
 	void add_file(string filename);
 	void flush_block();
 
 	vector<uint64_t> filename_blocks;
 	size_t num_files = 0, num_files_in_block = 0, num_blocks = 0;
-	bool seen_trigram(uint32_t trgm) {
+	bool seen_trigram(uint32_t trgm)
+	{
 		return invindex[trgm] != nullptr;
 	}
-	PostingListBuilder& get_pl_builder(uint32_t trgm) {
+	PostingListBuilder &get_pl_builder(uint32_t trgm)
+	{
 		if (invindex[trgm] == nullptr) {
 			invindex[trgm] = new PostingListBuilder;
 		}
@@ -161,7 +163,7 @@ public:
 	}
 
 private:
-	unique_ptr<PostingListBuilder*[]> invindex;
+	unique_ptr<PostingListBuilder *[]> invindex;
 	FILE *outfp;
 	string current_block;
 	string tempbuf;
@@ -217,7 +219,7 @@ void Corpus::flush_block()
 string read_cstr(FILE *fp)
 {
 	string ret;
-	for ( ;; ) {
+	for (;;) {
 		int ch = getc(fp);
 		if (ch == -1) {
 			perror("getc");
@@ -402,7 +404,8 @@ void do_build(const char *infile, const char *outfile, int block_size)
 	size_t trigrams = 0, longest_posting_list = 0;
 	size_t bytes_for_posting_lists = 0;
 	for (unsigned trgm = 0; trgm < NUM_TRIGRAMS; ++trgm) {
-		if (!corpus.seen_trigram(trgm)) continue;
+		if (!corpus.seen_trigram(trgm))
+			continue;
 		PostingListBuilder &pl_builder = corpus.get_pl_builder(trgm);
 		pl_builder.finish();
 		longest_posting_list = max(longest_posting_list, pl_builder.num_docids);

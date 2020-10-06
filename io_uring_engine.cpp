@@ -91,7 +91,8 @@ void IOUringEngine::finish()
 		}
 
 		unsigned head;
-		io_uring_for_each_cqe(&ring, head, cqe) {
+		io_uring_for_each_cqe(&ring, head, cqe)
+		{
 			PendingRead *pending = reinterpret_cast<PendingRead *>(cqe->user_data);
 			if (cqe->res <= 0) {
 				fprintf(stderr, "async read failed: %s\n", strerror(-cqe->res));

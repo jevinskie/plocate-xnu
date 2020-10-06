@@ -1,16 +1,16 @@
+#include <chrono>
+#include <fcntl.h>
+#include <memory>
 #include <stdio.h>
 #include <unistd.h>
-#include <fcntl.h>
-#include <chrono>
-#include <memory>
 
 #define dprintf(...)
 //#define dprintf(...) fprintf(stderr, __VA_ARGS__);
 
-#include "turbopfor.h"
-#include "vp4.h"
 #include "db.h"
 #include "io_uring_engine.h"
+#include "turbopfor.h"
+#include "vp4.h"
 
 using namespace std;
 using namespace std::chrono;
@@ -99,5 +99,5 @@ int main(void)
 	//   1 ns/element, a 10k-element posting list goes by in 0.01 ms, which is way beyond
 	//   instantaneous in practice).
 	fprintf(stderr, "%.1f MB/sec (compressed), %.1f MB/sec (uncompressed), %.1f ns/element\n", posting_list_bytes / own_sec / 1048576.0,
-		(total_elements * sizeof(uint32_t)) / own_sec / 1048576.0, 1e9 * own_sec / total_elements);
+	        (total_elements * sizeof(uint32_t)) / own_sec / 1048576.0, 1e9 * own_sec / total_elements);
 }
