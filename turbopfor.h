@@ -507,7 +507,11 @@ const unsigned char *decode_pfor_bitmap_interleaved_128_32(const unsigned char *
 	constexpr unsigned BlockSize = 128;
 	using Docid = uint32_t;
 
-	memset(out, 0, BlockSize * sizeof(Docid));
+	// Set all output values to zero, before the exceptions are filled in.
+	#pragma GCC unroll 4
+	for (unsigned i = 0; i < BlockSize / 4; ++i) {
+		_mm_storeu_si128(reinterpret_cast<__m128i *>(out) + i, _mm_setzero_si128());
+	}
 
 	const unsigned bit_width = *in++ & 0x3f;
 
