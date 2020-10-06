@@ -172,8 +172,11 @@ private:
 #ifdef COULD_HAVE_SSE2
 struct InterleavedBitReaderSSE2 {
 public:
+	__attribute__((target("sse2")))
 	InterleavedBitReaderSSE2(const unsigned char *in, unsigned bits)
 		: in(reinterpret_cast<const __m128i *>(in)), bits(bits), mask(_mm_set1_epi32(mask_for_bits(bits))) {}
+
+	__attribute__((target("sse2")))
 	__m128i read() {
 		__m128i val = _mm_srli_epi32(_mm_loadu_si128(in), bits_used);
 		if (bits_used + bits > 32) {
@@ -247,7 +250,10 @@ const unsigned char *decode_for(const unsigned char *in, unsigned num, Docid *ou
 #ifdef COULD_HAVE_SSE2
 class DeltaDecoderSSE2 {
 public:
+	__attribute__((target("sse2")))
 	DeltaDecoderSSE2(uint32_t prev_val) : prev_val(_mm_set1_epi32(prev_val)) {}
+
+	__attribute__((target("sse2")))
 	__m128i decode(__m128i val) {
 		val = _mm_add_epi32(val, _mm_slli_si128(val, 4));
 		val = _mm_add_epi32(val, _mm_slli_si128(val, 8));
