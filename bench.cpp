@@ -29,6 +29,7 @@ int main(void)
 	unique_ptr<Trigram[]> ht(new Trigram[hdr.hashtable_size + hdr.extra_ht_slots + 1]);
 	complete_pread(fd, ht.get(), (hdr.hashtable_size + hdr.extra_ht_slots + 1) * sizeof(Trigram), hdr.hash_table_offset_bytes);
 
+	size_t posting_list_bytes = 0, total_elements = 0;
 	uint32_t longest_pl = 0;
 	vector<pair<string, unsigned>> posting_lists;
 	for (unsigned i = 0; i < hdr.hashtable_size + hdr.extra_ht_slots; ++i) {
@@ -41,6 +42,8 @@ int main(void)
 		complete_pread(fd, &str[0], len, ht[i].offset);
 		posting_lists.emplace_back(move(str), ht[i].num_docids);
 		longest_pl = std::max(ht[i].num_docids, longest_pl);
+		posting_list_bytes += len;
+		total_elements += ht[i].num_docids;
 	}
 	ht.reset();
 	fprintf(stderr, "Read %zu posting lists.\n", posting_lists.size());
@@ -86,4 +89,15 @@ int main(void)
 	end = steady_clock::now();
 	double own_sec = duration<double>(end - start).count();
 	fprintf(stderr, "Decoding with own implementation: %.3f ms (%.2f%% speed)\n", 1e3 * own_sec, 100.0 * reference_sec / own_sec);
+
+	// Three numbers giving rules of thumb for judging our own implementation:
+	//
+	// - Compressed speed is easy to compare to disk I/O, to see the relative importance
+	// - Uncompressed speed is easy to compare to intersection speeds and memory bandwidth
+	//   (also very roughly comparable to the benchmark numbers in the TurboPFor README)
+	// - ns/element gives an absolute measure for plocate (e.g. if we can decompress at
+	//   1 ns/element, a 10k-element posting list goes by in 0.01 ms, which is way beyond
+	//   instantaneous in practice).
+	fprintf(stderr, "%.1f MB/sec (compressed), %.1f MB/sec (uncompressed), %.1f ns/element\n", posting_list_bytes / own_sec / 1048576.0,
+		(total_elements * sizeof(uint32_t)) / own_sec / 1048576.0, 1e9 * own_sec / total_elements);
 }
