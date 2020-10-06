@@ -240,7 +240,7 @@ inline void delta_decode_sse2(uint32_t *out)
 	}
 }
 
-template<unsigned BlockSize, bool OrWithExisting>
+template<unsigned BlockSize, bool OrWithExisting, bool DeltaDecode>
 __attribute__((target("sse2")))
 const unsigned char *decode_bitmap_sse2(const unsigned char *in, unsigned bit_width, uint32_t *out)
 {
@@ -248,6 +248,7 @@ const unsigned char *decode_bitmap_sse2(const unsigned char *in, unsigned bit_wi
 	__m128i *outvec = reinterpret_cast<__m128i *>(out);
 	const __m128i mask = _mm_set1_epi32((1U << bit_width) - 1);
 	unsigned bits_used = 0;
+	DeltaDecoderSSE2 delta(out[-1]);
 	for (unsigned i = 0; i < BlockSize / 4; ++i) {
 		__m128i val = _mm_srli_epi32(_mm_loadu_si128(invec), bits_used);
 		if (bits_used + bit_width > 32) {
@@ -257,6 +258,9 @@ const unsigned char *decode_bitmap_sse2(const unsigned char *in, unsigned bit_wi
 		val = _mm_and_si128(val, mask);
 		if constexpr (OrWithExisting) {
 			val = _mm_or_si128(val, _mm_loadu_si128(outvec + i));
+		}
+		if constexpr (DeltaDecode) {
+			val = delta.decode(val);
 		}
 		_mm_storeu_si128(outvec + i, val);
 
@@ -318,8 +322,7 @@ const unsigned char *decode_for_interleaved_128_32(const unsigned char *in, uint
 
 	const unsigned bit_width = *in++ & 0x3f;
 
-	in = decode_bitmap_sse2<BlockSize, false>(in, bit_width, out);
-	delta_decode_sse2<BlockSize>(out);
+	in = decode_bitmap_sse2<BlockSize, /*OrWithExisting=*/false, /*DeltaDecode=*/true>(in, bit_width, out);
 
 	return in;
 }
@@ -435,8 +438,7 @@ const unsigned char *decode_pfor_bitmap_interleaved_128_32(const unsigned char *
 	const unsigned bit_width = *in++ & 0x3f;
 
 	in = decode_pfor_bitmap_exceptions(in, BlockSize, bit_width, out);
-	in = decode_bitmap_sse2<BlockSize, true>(in, bit_width, out);
-	delta_decode_sse2<BlockSize>(out);
+	in = decode_bitmap_sse2<BlockSize, /*OrWithExisting=*/true, /*DeltaDecode=*/true>(in, bit_width, out);
 
 	return in;
 }
@@ -571,7 +573,7 @@ const unsigned char *decode_pfor_vb_interleaved_128_32(const unsigned char *in, 
 	unsigned num_exceptions = *in++;
 
 	// Decode the base values.
-	in = decode_bitmap_sse2<BlockSize, false>(in, bit_width, out);
+	in = decode_bitmap_sse2<BlockSize, /*OrWithExisting=*/false, /*DeltaDecode=*/false>(in, bit_width, out);
 
 	// Decode exceptions.
 	Docid exceptions[BlockSize];
