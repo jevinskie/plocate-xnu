@@ -3,7 +3,7 @@
 
 // A reimplementation of parts of the TurboPFor codecs, using the same
 // storage format. These are not as fast as the reference implementation
-// (about 60% of the performance, averaged over a real plocate corpus),
+// (about 80% of the performance, averaged over a real plocate corpus),
 // and do not support the same breadth of codecs (in particular, only
 // delta-plus-1 is implemented, and only 32-bit docids are tested),
 // but aim to be more portable and (ideally) easier-to-understand.
@@ -276,13 +276,14 @@ inline void delta_decode_sse2(uint32_t *out)
 	}
 }
 
-template<unsigned BlockSize, bool OrWithExisting, bool DeltaDecode>
+template<unsigned BlockSize, bool OrWithExisting, bool DeltaDecode, unsigned bit_width>
 __attribute__((target("sse2")))
-const unsigned char *decode_bitmap_sse2(const unsigned char *in, unsigned bit_width, uint32_t *out)
+const unsigned char *decode_bitmap_sse2_unrolled(const unsigned char *in, uint32_t *out)
 {
 	__m128i *outvec = reinterpret_cast<__m128i *>(out);
 	DeltaDecoderSSE2 delta(out[-1]);
 	InterleavedBitReaderSSE2 bs(in, bit_width);
+	#pragma GCC unroll 32
 	for (unsigned i = 0; i < BlockSize / 4; ++i) {
 		__m128i val = bs.read();
 		if constexpr (OrWithExisting) {
@@ -295,6 +296,48 @@ const unsigned char *decode_bitmap_sse2(const unsigned char *in, unsigned bit_wi
 	}
 	in += bytes_for_packed_bits(BlockSize, bit_width);
 	return in;
+}
+
+template<unsigned BlockSize, bool OrWithExisting, bool DeltaDecode>
+__attribute__((target("sse2")))
+const unsigned char *decode_bitmap_sse2(const unsigned char *in, unsigned bit_width, uint32_t *out)
+{
+	switch (bit_width) {
+	case 0: return decode_bitmap_sse2_unrolled<BlockSize, OrWithExisting, DeltaDecode, 0>(in, out);
+	case 1: return decode_bitmap_sse2_unrolled<BlockSize, OrWithExisting, DeltaDecode, 1>(in, out);
+	case 2: return decode_bitmap_sse2_unrolled<BlockSize, OrWithExisting, DeltaDecode, 2>(in, out);
+	case 3: return decode_bitmap_sse2_unrolled<BlockSize, OrWithExisting, DeltaDecode, 3>(in, out);
+	case 4: return decode_bitmap_sse2_unrolled<BlockSize, OrWithExisting, DeltaDecode, 4>(in, out);
+	case 5: return decode_bitmap_sse2_unrolled<BlockSize, OrWithExisting, DeltaDecode, 5>(in, out);
+	case 6: return decode_bitmap_sse2_unrolled<BlockSize, OrWithExisting, DeltaDecode, 6>(in, out);
+	case 7: return decode_bitmap_sse2_unrolled<BlockSize, OrWithExisting, DeltaDecode, 7>(in, out);
+	case 8: return decode_bitmap_sse2_unrolled<BlockSize, OrWithExisting, DeltaDecode, 8>(in, out);
+	case 9: return decode_bitmap_sse2_unrolled<BlockSize, OrWithExisting, DeltaDecode, 9>(in, out);
+	case 10: return decode_bitmap_sse2_unrolled<BlockSize, OrWithExisting, DeltaDecode, 10>(in, out);
+	case 11: return decode_bitmap_sse2_unrolled<BlockSize, OrWithExisting, DeltaDecode, 11>(in, out);
+	case 12: return decode_bitmap_sse2_unrolled<BlockSize, OrWithExisting, DeltaDecode, 12>(in, out);
+	case 13: return decode_bitmap_sse2_unrolled<BlockSize, OrWithExisting, DeltaDecode, 13>(in, out);
+	case 14: return decode_bitmap_sse2_unrolled<BlockSize, OrWithExisting, DeltaDecode, 14>(in, out);
+	case 15: return decode_bitmap_sse2_unrolled<BlockSize, OrWithExisting, DeltaDecode, 15>(in, out);
+	case 16: return decode_bitmap_sse2_unrolled<BlockSize, OrWithExisting, DeltaDecode, 16>(in, out);
+	case 17: return decode_bitmap_sse2_unrolled<BlockSize, OrWithExisting, DeltaDecode, 17>(in, out);
+	case 18: return decode_bitmap_sse2_unrolled<BlockSize, OrWithExisting, DeltaDecode, 18>(in, out);
+	case 19: return decode_bitmap_sse2_unrolled<BlockSize, OrWithExisting, DeltaDecode, 19>(in, out);
+	case 20: return decode_bitmap_sse2_unrolled<BlockSize, OrWithExisting, DeltaDecode, 20>(in, out);
+	case 21: return decode_bitmap_sse2_unrolled<BlockSize, OrWithExisting, DeltaDecode, 21>(in, out);
+	case 22: return decode_bitmap_sse2_unrolled<BlockSize, OrWithExisting, DeltaDecode, 22>(in, out);
+	case 23: return decode_bitmap_sse2_unrolled<BlockSize, OrWithExisting, DeltaDecode, 23>(in, out);
+	case 24: return decode_bitmap_sse2_unrolled<BlockSize, OrWithExisting, DeltaDecode, 24>(in, out);
+	case 25: return decode_bitmap_sse2_unrolled<BlockSize, OrWithExisting, DeltaDecode, 25>(in, out);
+	case 26: return decode_bitmap_sse2_unrolled<BlockSize, OrWithExisting, DeltaDecode, 26>(in, out);
+	case 27: return decode_bitmap_sse2_unrolled<BlockSize, OrWithExisting, DeltaDecode, 27>(in, out);
+	case 28: return decode_bitmap_sse2_unrolled<BlockSize, OrWithExisting, DeltaDecode, 28>(in, out);
+	case 29: return decode_bitmap_sse2_unrolled<BlockSize, OrWithExisting, DeltaDecode, 29>(in, out);
+	case 30: return decode_bitmap_sse2_unrolled<BlockSize, OrWithExisting, DeltaDecode, 30>(in, out);
+	case 31: return decode_bitmap_sse2_unrolled<BlockSize, OrWithExisting, DeltaDecode, 31>(in, out);
+	case 32: return decode_bitmap_sse2_unrolled<BlockSize, OrWithExisting, DeltaDecode, 32>(in, out);
+	}
+	assert(false);
 }
 #endif
 
