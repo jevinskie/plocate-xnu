@@ -209,23 +209,34 @@ const unsigned char *decode_for(const unsigned char *in, unsigned num, Docid *ou
 }
 
 #ifdef COULD_HAVE_SSE2
+class DeltaDecoderSSE2 {
+public:
+	DeltaDecoderSSE2(uint32_t prev_val) : prev_val(_mm_set1_epi32(prev_val)) {}
+	__m128i decode(__m128i val) {
+		val = _mm_add_epi32(val, _mm_slli_si128(val, 4));
+		val = _mm_add_epi32(val, _mm_slli_si128(val, 8));
+		val = _mm_add_epi32(val, _mm_add_epi32(prev_val, delta));
+		prev_val = _mm_shuffle_epi32(val, _MM_SHUFFLE(3, 3, 3, 3));
+		return val;
+	}
+
+private:
+	// Use 4/3/2/1 as delta instead of fixed 1, so that we can do the prev_val + delta
+	// in parallel with something else.
+	const __m128i delta = _mm_set_epi32(4, 3, 2, 1);
+
+	__m128i prev_val;
+};
+
 template<unsigned BlockSize>
 __attribute__((target("sse2")))
 inline void delta_decode_sse2(uint32_t *out)
 {
-	// Use 4/3/2/1 as delta instead of fixed 1, so that we can do the prev_val + delta
-	// in parallel with something else.
-	const __m128i delta = _mm_set_epi32(4, 3, 2, 1);
-	__m128i prev_val = _mm_set1_epi32(out[-1]);
+	DeltaDecoderSSE2 delta(out[-1]);
 	__m128i *outvec = reinterpret_cast<__m128i *>(out);
 	for (unsigned i = 0; i < BlockSize / 4; ++i) {
 		__m128i val = _mm_loadu_si128(outvec + i);
-		val = _mm_add_epi32(val, _mm_slli_si128(val, 4));
-		val = _mm_add_epi32(val, _mm_slli_si128(val, 8));
-		val = _mm_add_epi32(val, _mm_add_epi32(prev_val, delta));
-		_mm_storeu_si128(outvec + i, val);
-
-		prev_val = _mm_shuffle_epi32(val, _MM_SHUFFLE(3, 3, 3, 3));
+		_mm_storeu_si128(outvec + i, delta.decode(val));
 	}
 }
 
