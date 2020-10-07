@@ -13,9 +13,12 @@
 
 #include "turbopfor-common.h"
 
+#include <algorithm>
+
 #include <assert.h>
 #include <limits.h>
 #include <stdint.h>
+#include <string.h>
 
 template<class Docid>
 void write_le(Docid val, void *out)
@@ -27,7 +30,7 @@ void write_le(Docid val, void *out)
 	} else if constexpr (sizeof(Docid) == 2) {
 		val = htole16(val);
 	} else if constexpr (sizeof(Docid) == 1) {
-		val = val;
+		// No change.
 	} else {
 		assert(false);
 	}

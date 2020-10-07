@@ -8,6 +8,8 @@
 // delta-plus-1 is implemented, and only 32-bit docids are tested),
 // but aim to be more portable and (ideally) easier-to-understand.
 // In particular, they will compile on x86 without SSE4.1 or AVX support.
+// Unlike the reference code, only GCC and GCC-compatible compilers
+// (e.g. Clang) are supported.
 //
 // The main reference is https://michael.stapelberg.ch/posts/2019-02-05-turbopfor-analysis/,
 // although some implementation details have been worked out by studying the

@@ -162,7 +162,7 @@ Corpus::~Corpus()
 void Corpus::find_trigram(uint32_t trgm, function<void(const Trigram *trgmptr, size_t len)> cb)
 {
 	uint32_t bucket = hash_trigram(trgm, hdr.hashtable_size);
-	engine->submit_read(fd, sizeof(Trigram) * (hdr.extra_ht_slots + 2), hdr.hash_table_offset_bytes + sizeof(Trigram) * bucket, [this, trgm, bucket, cb{ move(cb) }](string s) {
+	engine->submit_read(fd, sizeof(Trigram) * (hdr.extra_ht_slots + 2), hdr.hash_table_offset_bytes + sizeof(Trigram) * bucket, [this, trgm, cb{ move(cb) }](string s) {
 		const Trigram *trgmptr = reinterpret_cast<const Trigram *>(s.data());
 		for (unsigned i = 0; i < hdr.extra_ht_slots + 1; ++i) {
 			if (trgmptr[i].trgm == trgm) {
@@ -382,7 +382,7 @@ void do_search_file(const vector<string> &needles, const char *filename)
 			if (done)
 				break;
 		}
-		engine.submit_read(fd, len, trgmptr.offset, [trgmptr, len, &done, &in1, &in2, &out](string s) {
+		engine.submit_read(fd, len, trgmptr.offset, [trgmptr{trgmptr}, len{len}, &done, &in1, &in2, &out](string s) {
 			if (done)
 				return;
 			uint32_t trgm __attribute__((unused)) = trgmptr.trgm;
