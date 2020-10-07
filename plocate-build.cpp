@@ -1,4 +1,5 @@
 #include "db.h"
+#include "turbopfor-encode.h"
 
 #include <algorithm>
 #include <arpa/inet.h>
@@ -17,8 +18,6 @@
 #include <unordered_map>
 #include <vector>
 #include <zstd.h>
-
-#include "turbopfor-encode.h"
 
 #define P4NENC_BOUND(n) ((n + 127) / 128 + (n + 32) * sizeof(uint32_t))
 #define dprintf(...)
