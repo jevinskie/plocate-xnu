@@ -13,18 +13,15 @@ endif
 
 all: plocate plocate-build
 
-plocate: plocate.o io_uring_engine.o TurboPFor-Integer-Compression/libic.a
+plocate: plocate.o io_uring_engine.o
 	$(CXX) -o $@ $^ -lzstd $(URING_LIBS) $(LDFLAGS)
 
-plocate-build: plocate-build.o TurboPFor-Integer-Compression/libic.a
+plocate-build: plocate-build.o
 	$(CXX) -o $@ $^ -lzstd $(LDFLAGS)
-
-TurboPFor-Integer-Compression/libic.a:
-	cd TurboPFor-Integer-Compression/ && $(MAKE)
 
 clean:
 	$(RM) plocate.o plocate-build.o io_uring_engine.o bench.o plocate plocate-build bench
-	cd TurboPFor-Integer-Compression/ && $(MAKE) clean
+	! [ -d TurboPFor-Integer-Compression/ ] || ( cd TurboPFor-Integer-Compression/ && $(MAKE) clean )
 
 install: all
 	$(INSTALL) -m 2755 -g mlocate plocate $(PREFIX)/bin/
@@ -32,6 +29,9 @@ install: all
 	$(INSTALL) -m 0755 update-plocate.sh /etc/cron.daily/plocate
 
 bench.o: bench.cpp turbopfor.h
+
+TurboPFor-Integer-Compression/libic.a:
+	cd TurboPFor-Integer-Compression/ && $(MAKE)
 
 bench: bench.o io_uring_engine.o TurboPFor-Integer-Compression/libic.a
 	$(CXX) -o $@ $^ $(URING_LIBS) $(LDFLAGS)

@@ -25,6 +25,8 @@
 #include <immintrin.h>
 #endif
 
+#include "turbopfor-common.h"
+
 // Forward declarations to declare to the template code below that they exist.
 // (These must seemingly be non-templates for function multiversioning to work.)
 __attribute__((target("default")))
@@ -48,15 +50,6 @@ __attribute__((target("sse2")))
 const unsigned char *
 decode_pfor_vb_interleaved_128_32(const unsigned char *in, uint32_t *out);
 #endif
-
-constexpr uint32_t mask_for_bits(unsigned bit_width)
-{
-	if (bit_width == 32) {
-		return 0xFFFFFFFF;
-	} else {
-		return (1U << bit_width) - 1;
-	}
-}
 
 template<class Docid>
 Docid read_le(const void *in)
@@ -205,17 +198,6 @@ private:
 	unsigned bits_used = 0;
 };
 #endif
-
-// Does not properly account for overflow.
-inline unsigned div_round_up(unsigned val, unsigned div)
-{
-	return (val + div - 1) / div;
-}
-
-inline unsigned bytes_for_packed_bits(unsigned num, unsigned bit_width)
-{
-	return div_round_up(num * bit_width, CHAR_BIT);
-}
 
 // Constant block. Layout:
 //
@@ -726,13 +708,6 @@ decode_pfor_vb_interleaved_128_32(const unsigned char *in, uint32_t *out)
 
 	return in;
 }
-
-enum BlockType {
-	FOR = 0,
-	PFOR_VB = 1,
-	PFOR_BITMAP = 2,
-	CONSTANT = 3
-};
 
 template<unsigned BlockSize, class Docid>
 const unsigned char *decode_pfor_delta1(const unsigned char *in, unsigned num, bool interleaved, Docid *out)

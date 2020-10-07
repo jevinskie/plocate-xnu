@@ -1,5 +1,4 @@
 #include "db.h"
-#include "vp4.h"
 
 #include <algorithm>
 #include <arpa/inet.h>
@@ -18,6 +17,8 @@
 #include <unordered_map>
 #include <vector>
 #include <zstd.h>
+
+#include "turbopfor-encode.h"
 
 #define P4NENC_BOUND(n) ((n + 127) / 128 + (n + 32) * sizeof(uint32_t))
 #define dprintf(...)
@@ -122,7 +123,7 @@ void PostingListBuilder::finish()
 
 	// No interleaving for partial blocks.
 	unsigned char buf[P4NENC_BOUND(128)];
-	unsigned char *end = p4enc32(pending_deltas.data(), pending_deltas.size(), buf);
+	unsigned char *end = encode_pfor_single_block<128>(pending_deltas.data(), pending_deltas.size(), /*interleaved=*/false, buf);
 	encoded.append(reinterpret_cast<char *>(buf), reinterpret_cast<char *>(end));
 }
 
@@ -130,15 +131,15 @@ void PostingListBuilder::append_block()
 {
 	unsigned char buf[P4NENC_BOUND(128)];
 	assert(pending_deltas.size() == 128);
-	unsigned char *end = p4enc128v32(pending_deltas.data(), 128, buf);
+	unsigned char *end = encode_pfor_single_block<128>(pending_deltas.data(), 128, /*interleaved=*/true, buf);
 	encoded.append(reinterpret_cast<char *>(buf), reinterpret_cast<char *>(end));
 }
 
 void PostingListBuilder::write_header(uint32_t docid)
 {
 	unsigned char buf[P4NENC_BOUND(1)];
-	size_t bytes = p4nd1enc128v32(&docid, 1, buf);
-	encoded.append(reinterpret_cast<char *>(buf), bytes);
+	unsigned char *end = write_baseval(docid, buf);
+	encoded.append(reinterpret_cast<char *>(buf), end - buf);
 }
 
 class Corpus {
