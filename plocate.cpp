@@ -63,7 +63,8 @@ void Serializer::release_current()
 
 	// See if any delayed prints can now be dealt with.
 	while (!pending.empty() && pending.top().seq == next_seq) {
-		if (limit_matches-- <= 0) return;
+		if (limit_matches-- <= 0)
+			return;
 		for (const string &msg : pending.top().msg) {
 			if (print_nul) {
 				printf("%s%c", msg.c_str(), 0);
@@ -197,8 +198,8 @@ size_t Corpus::get_num_filename_blocks() const
 }
 
 uint64_t scan_file_block(const vector<string> &needles, string_view compressed,
-                       unordered_map<string, bool> *access_rx_cache, int seq,
-                       Serializer *serializer)
+                         unordered_map<string, bool> *access_rx_cache, int seq,
+                         Serializer *serializer)
 {
 	uint64_t matched = 0;
 
@@ -233,9 +234,11 @@ uint64_t scan_file_block(const vector<string> &needles, string_view compressed,
 			}
 		}
 		if (found && has_access(filename, access_rx_cache)) {
-			if (limit_matches-- <= 0) break;
+			if (limit_matches-- <= 0)
+				break;
 			++matched;
-			if (only_count) continue;
+			if (only_count)
+				continue;
 			if (immediate_print) {
 				if (print_nul) {
 					printf("%s%c", filename, 0);
@@ -295,7 +298,8 @@ uint64_t scan_all_docids(const vector<string> &needles, int fd, const Corpus &co
 			size_t relative_offset = offsets[docid] - offsets[io_docid];
 			size_t len = offsets[docid + 1] - offsets[docid];
 			matched += scan_file_block(needles, { &compressed[relative_offset], len }, &access_rx_cache, 0, nullptr);
-			if (limit_matches <= 0) return matched;
+			if (limit_matches <= 0)
+				return matched;
 		}
 	}
 	return matched;
@@ -394,7 +398,7 @@ void do_search_file(const vector<string> &needles, const char *filename)
 			if (done)
 				break;
 		}
-		engine.submit_read(fd, len, trgmptr.offset, [trgmptr{trgmptr}, len{len}, &done, &in1, &in2, &out](string_view s) {
+		engine.submit_read(fd, len, trgmptr.offset, [trgmptr{ trgmptr }, len{ len }, &done, &in1, &in2, &out](string_view s) {
 			if (done)
 				return;
 			uint32_t trgm __attribute__((unused)) = trgmptr.trgm;

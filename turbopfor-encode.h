@@ -14,7 +14,6 @@
 #include "turbopfor-common.h"
 
 #include <algorithm>
-
 #include <assert.h>
 #include <limits.h>
 #include <stdint.h>

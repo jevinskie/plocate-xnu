@@ -144,10 +144,12 @@ void PostingListBuilder::write_header(uint32_t docid)
 class Corpus {
 public:
 	Corpus(FILE *outfp, size_t block_size)
-		: invindex(new PostingListBuilder *[NUM_TRIGRAMS]), outfp(outfp), block_size(block_size) {
+		: invindex(new PostingListBuilder *[NUM_TRIGRAMS]), outfp(outfp), block_size(block_size)
+	{
 		fill(invindex.get(), invindex.get() + NUM_TRIGRAMS, nullptr);
 	}
-	~Corpus() {
+	~Corpus()
+	{
 		for (unsigned i = 0; i < NUM_TRIGRAMS; ++i) {
 			delete invindex[i];
 		}
