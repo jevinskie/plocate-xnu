@@ -147,6 +147,12 @@ public:
 		: invindex(new PostingListBuilder *[NUM_TRIGRAMS]), outfp(outfp), block_size(block_size) {
 		fill(invindex.get(), invindex.get() + NUM_TRIGRAMS, nullptr);
 	}
+	~Corpus() {
+		for (unsigned i = 0; i < NUM_TRIGRAMS; ++i) {
+			delete invindex[i];
+		}
+	}
+
 	void add_file(string filename);
 	void flush_block();
 
