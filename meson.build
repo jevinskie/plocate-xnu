@@ -8,7 +8,7 @@ if not uringdep.found()
 	add_project_arguments('-DWITHOUT_URING', language: 'cpp')
 endif
 
-executable('plocate', ['plocate.cpp', 'io_uring_engine.cpp'],
+executable('plocate', ['plocate.cpp', 'io_uring_engine.cpp', 'turbopfor.cpp'],
 	dependencies: [uringdep, zstddep],
 	install: true,
 	install_mode: ['rwxr-sr-x', 'root', 'mlocate'])
