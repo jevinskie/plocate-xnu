@@ -1,14 +1,17 @@
 #ifndef IO_URING_ENGINE_H
 #define IO_URING_ENGINE_H 1
 
+#include <stddef.h>
+#include <sys/socket.h>
+#include <sys/types.h>
 #include <functional>
 #include <queue>
-#include <stdint.h>
-#include <string>
+#include <string_view>
+
+struct io_uring_sqe;
 #ifndef WITHOUT_URING
 #include <liburing.h>
 #endif
-#include <sys/socket.h>
 
 class IOUringEngine {
 public:
