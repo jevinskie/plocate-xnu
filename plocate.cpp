@@ -30,6 +30,7 @@ using namespace std::chrono;
 const char *dbpath = "/var/lib/mlocate/plocate.db";
 bool only_count = false;
 bool print_nul = false;
+int64_t limit_matches = -1;
 
 class Serializer {
 public:
@@ -62,6 +63,7 @@ void Serializer::release_current()
 
 	// See if any delayed prints can now be dealt with.
 	while (!pending.empty() && pending.top().seq == next_seq) {
+		if (limit_matches-- <= 0) return;
 		for (const string &msg : pending.top().msg) {
 			if (print_nul) {
 				printf("%s%c", msg.c_str(), 0);
@@ -231,6 +233,7 @@ uint64_t scan_file_block(const vector<string> &needles, string_view compressed,
 			}
 		}
 		if (found && has_access(filename, access_rx_cache)) {
+			if (limit_matches-- <= 0) break;
 			++matched;
 			if (only_count) continue;
 			if (immediate_print) {
@@ -292,6 +295,7 @@ uint64_t scan_all_docids(const vector<string> &needles, int fd, const Corpus &co
 			size_t relative_offset = offsets[docid] - offsets[io_docid];
 			size_t len = offsets[docid + 1] - offsets[docid];
 			matched += scan_file_block(needles, { &compressed[relative_offset], len }, &access_rx_cache, 0, nullptr);
+			if (limit_matches <= 0) return matched;
 		}
 	}
 	return matched;
@@ -447,6 +451,7 @@ void usage()
 	printf("  -d, --database DBPATH  use DBPATH instead of default database (which is\n");
 	printf("                         %s)\n", dbpath);
 	printf("  -h, --help             print this help\n");
+	printf("  -l, --limit, -n LIMIT  limit output (or counting) to LIMIT entries\n");
 	printf("  -0, --null             separate entries with NUL on output\n");
 }
 
@@ -456,13 +461,15 @@ int main(int argc, char **argv)
 		{ "help", no_argument, 0, 'h' },
 		{ "count", no_argument, 0, 'c' },
 		{ "database", required_argument, 0, 'd' },
+		{ "limit", required_argument, 0, 'l' },
+		{ nullptr, required_argument, 0, 'n' },
 		{ "null", no_argument, 0, '0' },
 		{ 0, 0, 0, 0 }
 	};
 
 	for (;;) {
 		int option_index = 0;
-		int c = getopt_long(argc, argv, "cd:h0", long_options, &option_index);
+		int c = getopt_long(argc, argv, "cd:hl:n:0", long_options, &option_index);
 		if (c == -1) {
 			break;
 		}
@@ -476,6 +483,10 @@ int main(int argc, char **argv)
 		case 'h':
 			usage();
 			exit(0);
+		case 'l':
+		case 'n':
+			limit_matches = atoll(optarg);
+			break;
 		case '0':
 			print_nul = true;
 			break;
