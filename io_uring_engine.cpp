@@ -11,7 +11,8 @@
 
 using namespace std;
 
-IOUringEngine::IOUringEngine()
+IOUringEngine::IOUringEngine(size_t slop_bytes)
+	: slop_bytes(slop_bytes)
 {
 #ifdef WITHOUT_URING
 	int ret = -1;
@@ -21,14 +22,14 @@ IOUringEngine::IOUringEngine()
 	using_uring = (ret >= 0);
 }
 
-void IOUringEngine::submit_read(int fd, size_t len, off_t offset, function<void(string)> cb)
+void IOUringEngine::submit_read(int fd, size_t len, off_t offset, function<void(string_view)> cb)
 {
 	if (!using_uring) {
 		// Synchronous read.
 		string s;
-		s.resize(len);
+		s.resize(len + slop_bytes);
 		complete_pread(fd, &s[0], len, offset);
-		cb(move(s));
+		cb(string_view(s.data(), len));
 		return;
 	}
 
@@ -47,10 +48,10 @@ void IOUringEngine::submit_read(int fd, size_t len, off_t offset, function<void(
 }
 
 #ifndef WITHOUT_URING
-void IOUringEngine::submit_read_internal(io_uring_sqe *sqe, int fd, size_t len, off_t offset, function<void(string)> cb)
+void IOUringEngine::submit_read_internal(io_uring_sqe *sqe, int fd, size_t len, off_t offset, function<void(string_view)> cb)
 {
 	void *buf;
-	if (posix_memalign(&buf, /*alignment=*/4096, len)) {
+	if (posix_memalign(&buf, /*alignment=*/4096, len + slop_bytes)) {
 		fprintf(stderr, "Couldn't allocate %zu bytes: %s\n", len, strerror(errno));
 		exit(1);
 	}
@@ -119,7 +120,7 @@ void IOUringEngine::finish()
 				--pending_reads;
 
 				size_t old_pending_reads = pending_reads;
-				pending->cb(string(reinterpret_cast<char *>(pending->buf), pending->len));
+				pending->cb(string_view(reinterpret_cast<char *>(pending->buf), pending->len));
 				free(pending->buf);
 				delete pending;
 

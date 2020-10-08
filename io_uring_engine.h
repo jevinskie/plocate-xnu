@@ -12,32 +12,33 @@
 
 class IOUringEngine {
 public:
-	IOUringEngine();
-	void submit_read(int fd, size_t len, off_t offset, std::function<void(std::string)> cb);
+	IOUringEngine(size_t slop_bytes);
+	void submit_read(int fd, size_t len, off_t offset, std::function<void(std::string_view)> cb);
 	void finish();
 	size_t get_waiting_reads() const { return pending_reads + queued_reads.size(); }
 
 private:
 #ifndef WITHOUT_URING
-	void submit_read_internal(io_uring_sqe *sqe, int fd, size_t len, off_t offset, std::function<void(std::string)> cb);
+	void submit_read_internal(io_uring_sqe *sqe, int fd, size_t len, off_t offset, std::function<void(std::string_view)> cb);
 
 	io_uring ring;
 #endif
 	size_t pending_reads = 0;  // Number of requests we have going in the ring.
 	bool using_uring;
+	const size_t slop_bytes;
 
 	struct QueuedRead {
 		int fd;
 		size_t len;
 		off_t offset;
-		std::function<void(std::string)> cb;
+		std::function<void(std::string_view)> cb;
 	};
 	std::queue<QueuedRead> queued_reads;
 
 	struct PendingRead {
 		void *buf;
 		size_t len;
-		std::function<void(std::string)> cb;
+		std::function<void(std::string_view)> cb;
 
 		// For re-submission.
 		int fd;

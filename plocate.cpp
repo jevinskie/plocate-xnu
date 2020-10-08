@@ -119,7 +119,7 @@ public:
 	Corpus(int fd, IOUringEngine *engine);
 	~Corpus();
 	void find_trigram(uint32_t trgm, function<void(const Trigram *trgmptr, size_t len)> cb);
-	void get_compressed_filename_block(uint32_t docid, function<void(string)> cb) const;
+	void get_compressed_filename_block(uint32_t docid, function<void(string_view)> cb) const;
 	size_t get_num_filename_blocks() const;
 	off_t offset_for_block(uint32_t docid) const
 	{
@@ -165,7 +165,7 @@ Corpus::~Corpus()
 void Corpus::find_trigram(uint32_t trgm, function<void(const Trigram *trgmptr, size_t len)> cb)
 {
 	uint32_t bucket = hash_trigram(trgm, hdr.hashtable_size);
-	engine->submit_read(fd, sizeof(Trigram) * (hdr.extra_ht_slots + 2), hdr.hash_table_offset_bytes + sizeof(Trigram) * bucket, [this, trgm, cb{ move(cb) }](string s) {
+	engine->submit_read(fd, sizeof(Trigram) * (hdr.extra_ht_slots + 2), hdr.hash_table_offset_bytes + sizeof(Trigram) * bucket, [this, trgm, cb{ move(cb) }](string_view s) {
 		const Trigram *trgmptr = reinterpret_cast<const Trigram *>(s.data());
 		for (unsigned i = 0; i < hdr.extra_ht_slots + 1; ++i) {
 			if (trgmptr[i].trgm == trgm) {
@@ -179,11 +179,11 @@ void Corpus::find_trigram(uint32_t trgm, function<void(const Trigram *trgmptr, s
 	});
 }
 
-void Corpus::get_compressed_filename_block(uint32_t docid, function<void(string)> cb) const
+void Corpus::get_compressed_filename_block(uint32_t docid, function<void(string_view)> cb) const
 {
 	// Read the file offset from this docid and the next one.
 	// This is always allowed, since we have a sentinel block at the end.
-	engine->submit_read(fd, sizeof(uint64_t) * 2, offset_for_block(docid), [this, cb{ move(cb) }](string s) {
+	engine->submit_read(fd, sizeof(uint64_t) * 2, offset_for_block(docid), [this, cb{ move(cb) }](string_view s) {
 		const uint64_t *ptr = reinterpret_cast<const uint64_t *>(s.data());
 		off_t offset = ptr[0];
 		size_t len = ptr[1] - ptr[0];
@@ -264,7 +264,7 @@ size_t scan_docids(const vector<string> &needles, const vector<uint32_t> &docids
 	uint64_t matched = 0;
 	for (size_t i = 0; i < docids.size(); ++i) {
 		uint32_t docid = docids[i];
-		corpus.get_compressed_filename_block(docid, [i, &matched, &needles, &access_rx_cache, &docids_in_order](string compressed) {
+		corpus.get_compressed_filename_block(docid, [i, &matched, &needles, &access_rx_cache, &docids_in_order](string_view compressed) {
 			matched += scan_file_block(needles, compressed, &access_rx_cache, i, &docids_in_order);
 		});
 	}
@@ -321,7 +321,7 @@ void do_search_file(const vector<string> &needles, const char *filename)
 		return;
 	}
 
-	IOUringEngine engine;
+	IOUringEngine engine(/*slop_bytes=*/16);  // 16 slop bytes as described in turbopfor.h.
 	Corpus corpus(fd, &engine);
 	dprintf("Corpus init done after %.1f ms.\n", 1e3 * duration<float>(steady_clock::now() - start).count());
 
@@ -394,12 +394,12 @@ void do_search_file(const vector<string> &needles, const char *filename)
 			if (done)
 				break;
 		}
-		engine.submit_read(fd, len, trgmptr.offset, [trgmptr{trgmptr}, len{len}, &done, &in1, &in2, &out](string s) {
+		engine.submit_read(fd, len, trgmptr.offset, [trgmptr{trgmptr}, len{len}, &done, &in1, &in2, &out](string_view s) {
 			if (done)
 				return;
 			uint32_t trgm __attribute__((unused)) = trgmptr.trgm;
 			size_t num = trgmptr.num_docids;
-			unsigned char *pldata = reinterpret_cast<unsigned char *>(s.data());
+			const unsigned char *pldata = reinterpret_cast<const unsigned char *>(s.data());
 			if (in1.empty()) {
 				in1.resize(num + 128);
 				decode_pfor_delta1<128>(pldata, num, /*interleaved=*/true, &in1[0]);
