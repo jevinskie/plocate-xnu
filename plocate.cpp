@@ -30,7 +30,7 @@ using namespace std::chrono;
 const char *dbpath = "/var/lib/mlocate/plocate.db";
 bool only_count = false;
 bool print_nul = false;
-int64_t limit_matches = -1;
+int64_t limit_matches = numeric_limits<int64_t>::max();
 
 class Serializer {
 public:
