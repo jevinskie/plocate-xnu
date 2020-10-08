@@ -28,6 +28,7 @@ using namespace std::chrono;
 #include "turbopfor.h"
 
 const char *dbpath = "/var/lib/mlocate/plocate.db";
+bool only_count = false;
 bool print_nul = false;
 
 class Serializer {
@@ -193,11 +194,11 @@ size_t Corpus::get_num_filename_blocks() const
 	return hdr.num_docids;
 }
 
-size_t scan_file_block(const vector<string> &needles, string_view compressed,
+uint64_t scan_file_block(const vector<string> &needles, string_view compressed,
                        unordered_map<string, bool> *access_rx_cache, int seq,
                        Serializer *serializer)
 {
-	size_t matched = 0;
+	uint64_t matched = 0;
 
 	unsigned long long uncompressed_len = ZSTD_getFrameContentSize(compressed.data(), compressed.size());
 	if (uncompressed_len == ZSTD_CONTENTSIZE_UNKNOWN || uncompressed_len == ZSTD_CONTENTSIZE_ERROR) {
@@ -231,6 +232,7 @@ size_t scan_file_block(const vector<string> &needles, string_view compressed,
 		}
 		if (found && has_access(filename, access_rx_cache)) {
 			++matched;
+			if (only_count) continue;
 			if (immediate_print) {
 				if (print_nul) {
 					printf("%s%c", filename, 0);
@@ -242,7 +244,7 @@ size_t scan_file_block(const vector<string> &needles, string_view compressed,
 			}
 		}
 	}
-	if (serializer != nullptr) {
+	if (serializer != nullptr && !only_count) {
 		if (immediate_print) {
 			serializer->release_current();
 		} else {
@@ -256,7 +258,7 @@ size_t scan_docids(const vector<string> &needles, const vector<uint32_t> &docids
 {
 	Serializer docids_in_order;
 	unordered_map<string, bool> access_rx_cache;
-	size_t matched = 0;
+	uint64_t matched = 0;
 	for (size_t i = 0; i < docids.size(); ++i) {
 		uint32_t docid = docids[i];
 		corpus.get_compressed_filename_block(docid, [i, &matched, &needles, &access_rx_cache, &docids_in_order](string compressed) {
@@ -270,13 +272,14 @@ size_t scan_docids(const vector<string> &needles, const vector<uint32_t> &docids
 // We do this sequentially, as it's faster than scattering
 // a lot of I/O through io_uring and hoping the kernel will
 // coalesce it plus readahead for us.
-void scan_all_docids(const vector<string> &needles, int fd, const Corpus &corpus, IOUringEngine *engine)
+uint64_t scan_all_docids(const vector<string> &needles, int fd, const Corpus &corpus, IOUringEngine *engine)
 {
 	unordered_map<string, bool> access_rx_cache;
 	uint32_t num_blocks = corpus.get_num_filename_blocks();
 	unique_ptr<uint64_t[]> offsets(new uint64_t[num_blocks + 1]);
 	complete_pread(fd, offsets.get(), (num_blocks + 1) * sizeof(uint64_t), corpus.offset_for_block(0));
 	string compressed;
+	uint64_t matched = 0;
 	for (uint32_t io_docid = 0; io_docid < num_blocks; io_docid += 32) {
 		uint32_t last_docid = std::min(io_docid + 32, num_blocks);
 		size_t io_len = offsets[last_docid] - offsets[io_docid];
@@ -288,9 +291,10 @@ void scan_all_docids(const vector<string> &needles, int fd, const Corpus &corpus
 		for (uint32_t docid = io_docid; docid < last_docid; ++docid) {
 			size_t relative_offset = offsets[docid] - offsets[io_docid];
 			size_t len = offsets[docid + 1] - offsets[docid];
-			scan_file_block(needles, { &compressed[relative_offset], len }, &access_rx_cache, 0, nullptr);
+			matched += scan_file_block(needles, { &compressed[relative_offset], len }, &access_rx_cache, 0, nullptr);
 		}
 	}
+	return matched;
 }
 
 void do_search_file(const vector<string> &needles, const char *filename)
@@ -328,6 +332,9 @@ void do_search_file(const vector<string> &needles, const char *filename)
 				if (trgmptr == nullptr) {
 					dprintf("trigram '%c%c%c' isn't found, we abort the search\n",
 					        trgm & 0xff, (trgm >> 8) & 0xff, (trgm >> 16) & 0xff);
+					if (only_count) {
+						printf("0\n");
+					}
 					exit(0);
 				}
 				if (trgmptr->num_docids > shortest_so_far * 100) {
@@ -349,7 +356,8 @@ void do_search_file(const vector<string> &needles, const char *filename)
 		// (We could have searched through all trigrams that matched
 		// the pattern and done a union of them, but that's a lot of
 		// work for fairly unclear gain.)
-		scan_all_docids(needles, fd, corpus, &engine);
+		uint64_t matched = scan_all_docids(needles, fd, corpus, &engine);
+		printf("%zu\n", matched);
 		return;
 	}
 	sort(trigrams.begin(), trigrams.end());
@@ -421,9 +429,13 @@ void do_search_file(const vector<string> &needles, const char *filename)
 	dprintf("Intersection done after %.1f ms. Doing final verification and printing:\n",
 	        1e3 * duration<float>(steady_clock::now() - start).count());
 
-	size_t matched __attribute__((unused)) = scan_docids(needles, in1, corpus, &engine);
+	uint64_t matched = scan_docids(needles, in1, corpus, &engine);
 	dprintf("Done in %.1f ms, found %zu matches.\n",
 	        1e3 * duration<float>(steady_clock::now() - start).count(), matched);
+
+	if (only_count) {
+		printf("%zu\n", matched);
+	}
 }
 
 void usage()
@@ -431,6 +443,7 @@ void usage()
 	// The help text comes from mlocate.
 	printf("Usage: plocate [OPTION]... PATTERN...\n");
 	printf("\n");
+	printf("  -c, --count            only print number of found entries\n");
 	printf("  -d, --database DBPATH  use DBPATH instead of default database (which is\n");
 	printf("                         %s)\n", dbpath);
 	printf("  -h, --help             print this help\n");
@@ -441,6 +454,7 @@ int main(int argc, char **argv)
 {
 	static const struct option long_options[] = {
 		{ "help", no_argument, 0, 'h' },
+		{ "count", no_argument, 0, 'c' },
 		{ "database", required_argument, 0, 'd' },
 		{ "null", no_argument, 0, '0' },
 		{ 0, 0, 0, 0 }
@@ -448,11 +462,14 @@ int main(int argc, char **argv)
 
 	for (;;) {
 		int option_index = 0;
-		int c = getopt_long(argc, argv, "d:h0", long_options, &option_index);
+		int c = getopt_long(argc, argv, "cd:h0", long_options, &option_index);
 		if (c == -1) {
 			break;
 		}
 		switch (c) {
+		case 'c':
+			only_count = true;
+			break;
 		case 'd':
 			dbpath = strdup(optarg);
 			break;
