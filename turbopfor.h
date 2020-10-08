@@ -14,6 +14,13 @@
 // The main reference is https://michael.stapelberg.ch/posts/2019-02-05-turbopfor-analysis/,
 // although some implementation details have been worked out by studying the
 // TurboPFor code.
+//
+// The decoder, like the reference implementation, is not robust against
+// malicious of corrupted. Several functions (again like the reference
+// implementation) can read N bytes past the end, so you need to have some slop
+// in the input buffers; this is documented for each function (unlike
+// the reference implementation), but the documented slop assumes a
+// non-malicious encoder.
 
 #include <algorithm>
 #include <assert.h>
@@ -93,6 +100,7 @@ const unsigned char *read_baseval(const unsigned char *in, Docid *out)
 	}
 }
 
+// Does not read past the end of the input.
 template<class Docid>
 const unsigned char *read_vb(const unsigned char *in, Docid *out)
 {
@@ -122,6 +130,8 @@ struct BitReader {
 public:
 	BitReader(const unsigned char *in, unsigned bits)
 		: in(in), bits(bits), mask(mask_for_bits(bits)) {}
+
+	// Can read 4 bytes past the end of the input (if bits_used == 0).
 	uint32_t read()
 	{
 		uint32_t val = (read_le<uint32_t>(in) >> bits_used) & mask;
@@ -145,6 +155,8 @@ struct InterleavedBitReader {
 public:
 	InterleavedBitReader(const unsigned char *in, unsigned bits)
 		: in(in), bits(bits), mask(mask_for_bits(bits)) {}
+
+	// Can read 4 bytes past the end of the input (if bit_width == 0).
 	uint32_t read()
 	{
 		uint32_t val;
@@ -176,6 +188,7 @@ public:
 	InterleavedBitReaderSSE2(const unsigned char *in, unsigned bits)
 		: in(reinterpret_cast<const __m128i *>(in)), bits(bits), mask(_mm_set1_epi32(mask_for_bits(bits))) {}
 
+	// Can read 16 bytes past the end of the input (if bit_width == 0).
 	__attribute__((target("sse2")))
 	__m128i
 	read()
@@ -205,6 +218,8 @@ private:
 //
 //  - Bit width (6 bits) | type << 6
 //  - Base values (<bits> bits, rounded up to nearest byte)
+//
+// Can read 4 bytes past the end of the input (if bit_width == 0).
 template<class Docid>
 const unsigned char *decode_constant(const unsigned char *in, unsigned num, Docid *out)
 {
@@ -225,6 +240,8 @@ const unsigned char *decode_constant(const unsigned char *in, unsigned num, Doci
 //
 //  - Bit width (6 bits) | type << 6
 //  - Base values (<num> values of <bits> bits, rounded up to a multiple of 32 values)
+//
+// Can read 4 bytes past the end of the input (inherit from BitReader).
 template<class Docid>
 const unsigned char *decode_for(const unsigned char *in, unsigned num, Docid *out)
 {
@@ -275,6 +292,7 @@ __attribute__((target("sse2"))) inline void delta_decode_sse2(uint32_t *out)
 	}
 }
 
+// Can read 16 bytes past the end of its input (inherit from InterleavedBitReaderSSE2).
 template<unsigned BlockSize, bool OrWithExisting, bool DeltaDecode, unsigned bit_width>
 __attribute__((target("sse2")))
 const unsigned char *
@@ -298,6 +316,7 @@ decode_bitmap_sse2_unrolled(const unsigned char *in, uint32_t *out)
 	return in;
 }
 
+// Can read 16 bytes past the end of its input (inherit from InterleavedBitReaderSSE2).
 template<unsigned BlockSize, bool OrWithExisting, bool DeltaDecode>
 __attribute__((target("sse2")))
 const unsigned char *
@@ -377,6 +396,8 @@ decode_bitmap_sse2(const unsigned char *in, unsigned bit_width, uint32_t *out)
 
 // Like decode_for(), but the values are organized in four independent streams,
 // for SIMD (presumably SSE2). Supports a whole block only.
+//
+// Can read 16 bytes past the end of its input (inherit from InterleavedBitReader).
 template<unsigned BlockSize, class Docid>
 const unsigned char *decode_for_interleaved_generic(const unsigned char *in, Docid *out)
 {
@@ -399,6 +420,7 @@ const unsigned char *decode_for_interleaved_generic(const unsigned char *in, Doc
 	return in + bytes_for_packed_bits(BlockSize, bit_width);
 }
 
+// Does not read past the end of the input.
 template<unsigned BlockSize, class Docid>
 const unsigned char *decode_for_interleaved(const unsigned char *in, Docid *out)
 {
@@ -409,6 +431,7 @@ const unsigned char *decode_for_interleaved(const unsigned char *in, Docid *out)
 	}
 }
 
+// Does not read past the end of the input.
 __attribute__((target("default")))
 const unsigned char *
 decode_for_interleaved_128_32(const unsigned char *in, uint32_t *out)
@@ -418,6 +441,7 @@ decode_for_interleaved_128_32(const unsigned char *in, uint32_t *out)
 
 #ifdef COULD_HAVE_SSE2
 // Specialized version for SSE2.
+// Can read 16 bytes past the end of the input (inherit from decode_bitmap_sse2()).
 __attribute__((target("sse2")))
 const unsigned char *
 decode_for_interleaved_128_32(const unsigned char *in, uint32_t *out)
@@ -432,6 +456,7 @@ decode_for_interleaved_128_32(const unsigned char *in, uint32_t *out)
 }
 #endif
 
+// Can read 4 bytes past the end of the input (inherit from BitReader).
 template<class Docid>
 const unsigned char *decode_pfor_bitmap_exceptions(const unsigned char *in, unsigned num, Docid *out)
 {
@@ -464,6 +489,8 @@ const unsigned char *decode_pfor_bitmap_exceptions(const unsigned char *in, unsi
 //  - Bitmap of which values have exceptions (<num> bits, rounded up to a byte)
 //  - Exceptions (<num_exc> values of <bits_exc> bits, rounded up to a byte)
 //  - Base values (<num> values of <bits> bits, rounded up to a byte)
+//
+// Can read 4 bytes past the end of the input (inherit from BitReader).
 template<class Docid>
 const unsigned char *decode_pfor_bitmap(const unsigned char *in, unsigned num, Docid *out)
 {
@@ -484,6 +511,9 @@ const unsigned char *decode_pfor_bitmap(const unsigned char *in, unsigned num, D
 
 // Like decode_pfor_bitmap(), but the base values are organized in four
 // independent streams, for SIMD (presumably SSE2). Supports a whole block only.
+//
+// Can read 16 bytes past the end of the input (inherit from InterleavedBitReader
+// and decode_pfor_bitmap_exceptions()).
 template<unsigned BlockSize, class Docid>
 const unsigned char *decode_pfor_bitmap_interleaved_generic(const unsigned char *in, Docid *out)
 {
@@ -513,6 +543,7 @@ const unsigned char *decode_pfor_bitmap_interleaved_generic(const unsigned char 
 	return in + bytes_for_packed_bits(BlockSize, bit_width);
 }
 
+// Can read 16 bytes past the end of the input (inherit from decode_pfor_bitmap_interleaved_generic()).
 template<unsigned BlockSize, class Docid>
 const unsigned char *decode_pfor_bitmap_interleaved(const unsigned char *in, Docid *out)
 {
@@ -532,6 +563,9 @@ decode_pfor_bitmap_interleaved_128_32(const unsigned char *in, uint32_t *out)
 
 #ifdef COULD_HAVE_SSE2
 // Specialized version for SSE2.
+//
+// Can read 16 bytes past the end of the input (inherit from InterleavedBitReaderSSE2
+// and decode_pfor_bitmap_exceptions()).
 __attribute__((target("sse2")))
 const unsigned char *
 decode_pfor_bitmap_interleaved_128_32(const unsigned char *in, uint32_t *out)
@@ -562,6 +596,9 @@ decode_pfor_bitmap_interleaved_128_32(const unsigned char *in, uint32_t *out)
 //    - If first byte is 255, <num_exc> 32-bit values (does not include the 255 byte)
 //    - Else, <num_exc> varbyte-encoded values (includes the non-255 byte)
 //  - Indexes of exceptions (<num_exc> bytes).
+//
+// Can read 4 bytes past the end of the input (inherit from BitReader,
+// assuming zero exceptions).
 template<unsigned BlockSize, class Docid>
 const unsigned char *decode_pfor_vb(const unsigned char *in, unsigned num, Docid *out)
 {
@@ -607,6 +644,7 @@ const unsigned char *decode_pfor_vb(const unsigned char *in, unsigned num, Docid
 
 // Like decode_pfor_vb(), but the base values are organized in four
 // independent streams, for SIMD (presumably SSE2). Supports a whole block only.
+// Can read 16 bytes past the end of its input (inherit from InterleavedBitReader).
 template<unsigned BlockSize, class Docid>
 const unsigned char *decode_pfor_vb_interleaved_generic(const unsigned char *in, Docid *out)
 {
@@ -655,6 +693,7 @@ const unsigned char *decode_pfor_vb_interleaved_generic(const unsigned char *in,
 	return in;
 }
 
+// Can read 16 bytes past the end of its input (inherit from decode_pfor_vb_interleaved_generic()).
 template<unsigned BlockSize, class Docid>
 const unsigned char *decode_pfor_vb_interleaved(const unsigned char *in, Docid *out)
 {
@@ -673,6 +712,7 @@ decode_pfor_vb_interleaved_128_32(const unsigned char *in, uint32_t *out)
 }
 
 // Specialized version for SSE2.
+// Can read 16 bytes past the end of the input (inherit from decode_bitmap_sse2()).
 __attribute__((target("sse2")))
 const unsigned char *
 decode_pfor_vb_interleaved_128_32(const unsigned char *in, uint32_t *out)
@@ -711,6 +751,7 @@ decode_pfor_vb_interleaved_128_32(const unsigned char *in, uint32_t *out)
 	return in;
 }
 
+// Can read 16 bytes past the end of the input (inherit from several functions).
 template<unsigned BlockSize, class Docid>
 const unsigned char *decode_pfor_delta1(const unsigned char *in, unsigned num, bool interleaved, Docid *out)
 {
