@@ -144,7 +144,9 @@ void PostingListBuilder::write_header(uint32_t docid)
 class Corpus {
 public:
 	Corpus(FILE *outfp, size_t block_size)
-		: invindex(new PostingListBuilder *[NUM_TRIGRAMS]), outfp(outfp), block_size(block_size) {}
+		: invindex(new PostingListBuilder *[NUM_TRIGRAMS]), outfp(outfp), block_size(block_size) {
+		fill(invindex.get(), invindex.get() + NUM_TRIGRAMS, nullptr);
+	}
 	void add_file(string filename);
 	void flush_block();
 
@@ -364,6 +366,7 @@ void do_build(const char *infile, const char *outfile, int block_size)
 	hdr.version = -1;  // Mark as broken.
 	hdr.hashtable_size = 0;  // Not known yet.
 	hdr.extra_ht_slots = num_overflow_slots;
+	hdr.num_docids = 0;
 	hdr.hash_table_offset_bytes = -1;  // We don't know these offsets yet.
 	hdr.filename_index_offset_bytes = -1;
 	fwrite(&hdr, sizeof(hdr), 1, outfp);
