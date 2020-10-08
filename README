@@ -2,13 +2,20 @@ plocate, a locate based on posting lists, consuming mlocate inputs
 and making a much faster index. Does not support querying by regex,
 case-insensitivity or really any options.
 
-Alpha stage; file format is subject to change. To build, run make.
+Alpha stage; file format is subject to change. To build, run
+
+  meson obj
+  cd obj
+  ninja
 
 If you wish to run some tests of the TurboPFor implementation against
 the reference implementation, you can run:
 
   git clone https://github.com/powturbo/TurboPFor-Integer-Compression
-  make -j8 bench
+  ( cd TurboPFor-Integer-Compression && make -j8 )
+  cd obj
+  ninja reconfigure
+  ninja bench
 
 Copyright 2020 Steinar H. Gunderson <steinar+git@gunderson.no>.
 Licensed under the GNU General Public License, either version 2,
