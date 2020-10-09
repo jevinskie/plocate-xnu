@@ -369,7 +369,9 @@ void do_search_file(const vector<string> &needles, const char *filename)
 		// the pattern and done a union of them, but that's a lot of
 		// work for fairly unclear gain.)
 		uint64_t matched = scan_all_docids(needles, fd, corpus, &engine);
-		printf("%zu\n", matched);
+		if (only_count) {
+			printf("%zu\n", matched);
+		}
 		return;
 	}
 	sort(trigrams.begin(), trigrams.end());
