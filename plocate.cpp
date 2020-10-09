@@ -309,6 +309,42 @@ uint64_t scan_all_docids(const vector<string> &needles, int fd, const Corpus &co
 	return matched;
 }
 
+// For debugging.
+string print_trigram(uint32_t trgm)
+{
+	char ch[3] = {
+		char(trgm & 0xff), char((trgm >> 8) & 0xff), char((trgm >> 16) & 0xff)
+	};
+
+	string str = "'";
+	for (unsigned i = 0; i < 3;) {
+		if (ch[i] == '\\') {
+			str.push_back('\\');
+			str.push_back(ch[i]);
+			++i;
+		} else if (int(ch[i]) >= 32 && int(ch[i]) <= 127) {  // Holds no matter whether char is signed or unsigned.
+			str.push_back(ch[i]);
+			++i;
+		} else {
+			// See if we have an entire UTF-8 codepoint, and that it's reasonably printable.
+			mbtowc(nullptr, 0, 0);
+			wchar_t pwc;
+			int ret = mbtowc(&pwc, ch + i, 3 - i);
+			if (ret >= 1 && pwc >= 32) {
+				str.append(ch + i, ret);
+				i += ret;
+			} else {
+				char buf[16];
+				snprintf(buf, sizeof(buf), "\\x{%02x}", (unsigned char)ch[i]);
+				str += buf;
+				++i;
+			}
+		}
+	}
+	str += "'";
+	return str;
+}
+
 void do_search_file(const vector<string> &needles, const char *filename)
 {
 	int fd = open(filename, O_RDONLY);
@@ -342,17 +378,15 @@ void do_search_file(const vector<string> &needles, const char *filename)
 			uint32_t trgm = read_trigram(needle, i);
 			corpus.find_trigram(trgm, [trgm, &trigrams, &shortest_so_far](const Trigram *trgmptr, size_t len) {
 				if (trgmptr == nullptr) {
-					dprintf("trigram '%c%c%c' isn't found, we abort the search\n",
-					        trgm & 0xff, (trgm >> 8) & 0xff, (trgm >> 16) & 0xff);
+					dprintf("trigram %s isn't found, we abort the search\n", print_trigram(trgm).c_str());
 					if (only_count) {
 						printf("0\n");
 					}
 					exit(0);
 				}
 				if (trgmptr->num_docids > shortest_so_far * 100) {
-					dprintf("not loading trigram '%c%c%c' with %u docids, it would be ignored later anyway\n",
-					        trgm & 0xff, (trgm >> 8) & 0xff, (trgm >> 16) & 0xff,
-					        trgmptr->num_docids);
+					dprintf("not loading trigram %s with %u docids, it would be ignored later anyway\n",
+					        print_trigram(trgm).c_str(), trgmptr->num_docids);
 				} else {
 					trigrams.emplace_back(*trgmptr, len);
 					shortest_so_far = std::min<uint64_t>(shortest_so_far, trgmptr->num_docids);
@@ -389,10 +423,9 @@ void do_search_file(const vector<string> &needles, const char *filename)
 	for (auto [trgmptr, len] : trigrams) {
 		if (!in1.empty() && trgmptr.num_docids > in1.size() * 100) {
 			uint32_t trgm __attribute__((unused)) = trgmptr.trgm;
-			dprintf("trigram '%c%c%c' (%zu bytes) has %u entries, ignoring the rest (will "
+			dprintf("trigram %s (%zu bytes) has %u entries, ignoring the rest (will "
 			        "weed out false positives later)\n",
-			        trgm & 0xff, (trgm >> 8) & 0xff, (trgm >> 16) & 0xff,
-			        len, trgmptr.num_docids);
+			        print_trigram(trgm).c_str(), len, trgmptr.num_docids);
 			break;
 		}
 
@@ -414,8 +447,8 @@ void do_search_file(const vector<string> &needles, const char *filename)
 				in1.resize(num + 128);
 				decode_pfor_delta1_128(pldata, num, /*interleaved=*/true, &in1[0]);
 				in1.resize(num);
-				dprintf("trigram '%c%c%c' (%zu bytes) decoded to %zu entries\n", trgm & 0xff,
-				        (trgm >> 8) & 0xff, (trgm >> 16) & 0xff, len, num);
+				dprintf("trigram %s (%zu bytes) decoded to %zu entries\n",
+				        print_trigram(trgm).c_str(), len, num);
 			} else {
 				if (in2.size() < num + 128) {
 					in2.resize(num + 128);
@@ -426,9 +459,8 @@ void do_search_file(const vector<string> &needles, const char *filename)
 				set_intersection(in1.begin(), in1.end(), in2.begin(), in2.begin() + num,
 				                 back_inserter(out));
 				swap(in1, out);
-				dprintf("trigram '%c%c%c' (%zu bytes) decoded to %zu entries, %zu left\n",
-				        trgm & 0xff, (trgm >> 8) & 0xff, (trgm >> 16) & 0xff,
-				        len, num, in1.size());
+				dprintf("trigram %s (%zu bytes) decoded to %zu entries, %zu left\n",
+				        print_trigram(trgm).c_str(), len, num, in1.size());
 				if (in1.empty()) {
 					dprintf("no matches (intersection list is empty)\n");
 					done = true;
@@ -477,6 +509,7 @@ int main(int argc, char **argv)
 		{ 0, 0, 0, 0 }
 	};
 
+	setlocale(LC_ALL, "");
 	for (;;) {
 		int option_index = 0;
 		int c = getopt_long(argc, argv, "cd:hl:n:0", long_options, &option_index);
