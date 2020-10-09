@@ -1,9 +1,9 @@
+#include <algorithm>
 #include <assert.h>
 #include <endian.h>
 #include <stdint.h>
 #include <string.h>
 #include <strings.h>
-#include <algorithm>
 
 #if defined(__i386__) || defined(__x86_64__)
 #define COULD_HAVE_SSE2

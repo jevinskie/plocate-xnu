@@ -1,22 +1,22 @@
-#include <assert.h>
-#include <math.h>
-#include <stdio.h>
-#include <stdint.h>
-#include <string.h>
-#include <sys/stat.h>
-#include <zstd.h>
-#include <stdlib.h>
-#include <algorithm>
-#include <chrono>
-#include <memory>
-#include <string>
-#include <vector>
-#include <iosfwd>
-#include <string_view>
-#include <utility>
-
 #include "db.h"
 #include "turbopfor-encode.h"
+
+#include <algorithm>
+#include <assert.h>
+#include <chrono>
+#include <iosfwd>
+#include <math.h>
+#include <memory>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <string>
+#include <string_view>
+#include <sys/stat.h>
+#include <utility>
+#include <vector>
+#include <zstd.h>
 
 #define P4NENC_BOUND(n) ((n + 127) / 128 + (n + 32) * sizeof(uint32_t))
 #define dprintf(...)
