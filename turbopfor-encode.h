@@ -52,6 +52,12 @@ unsigned char *write_baseval(Docid in, unsigned char *out)
 		out[1] = in & 0xff;
 		out[2] = (in >> 8) & 0xff;
 		return out + 3;
+	} else if (in < 0x10000000) {
+		out[0] = (in >> 24) | 0xe0;
+		out[1] = (in >> 16) & 0xff;
+		out[2] = (in >> 8) & 0xff;
+		out[3] = in & 0xff;
+		return out + 4;
 	} else {
 		assert(false);  // Not implemented.
 	}

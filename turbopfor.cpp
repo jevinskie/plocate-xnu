@@ -74,6 +74,12 @@ const unsigned char *read_baseval(const unsigned char *in, Docid *out)
 		        (uint32_t(in[2]) << 8) |
 		        (uint32_t(in[1]))) & 0x1fffff;
 		return in + 3;
+	} else if (*in < 240) {
+		*out = ((uint32_t(in[0]) << 24) |
+		        (uint32_t(in[1]) << 16) |
+		        (uint32_t(in[2]) << 8) |
+		        (uint32_t(in[3]))) & 0xfffffff;
+		return in + 4;
 	} else {
 		assert(false);  // Not implemented.
 	}
