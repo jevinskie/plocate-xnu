@@ -5,6 +5,7 @@
 #include <assert.h>
 #include <chrono>
 #include <iosfwd>
+#include <getopt.h>
 #include <math.h>
 #include <memory>
 #include <stdint.h>
@@ -494,8 +495,66 @@ void do_build(const char *infile, const char *outfile, int block_size)
 	dprintf("\n");
 }
 
+void usage()
+{
+	printf(
+		"Usage: plocate-build MLOCATE_DB PLOCATE_DB\n"
+		"\n"
+		"Generate plocate index from mlocate.db, typically /var/lib/mlocate/mlocate.db.\n"
+		"Normally, the destination should be /var/lib/mlocate/plocate.db.\n"
+		"\n"
+		"  -b, --block-size SIZE  number of filenames to store in each block (default 32)\n"
+		"      --help             print this help\n"
+		"      --version          print version information\n");
+}
+
+void version()
+{
+	printf("plocate-build %s\n", PLOCATE_VERSION);
+	printf("Copyright 2020 Steinar H. Gunderson\n");
+	printf("License GPLv2+: GNU GPL version 2 or later <https://gnu.org/licenses/gpl.html>.\n");
+	printf("This is free software: you are free to change and redistribute it.\n");
+	printf("There is NO WARRANTY, to the extent permitted by law.\n");
+}
+
 int main(int argc, char **argv)
 {
-	do_build(argv[1], argv[2], 32);
+	static const struct option long_options[] = {
+		{ "block-size", required_argument, 0, 'b' },
+		{ "help", no_argument, 0, 'h' },
+		{ "version", no_argument, 0, 'V' },
+		{ 0, 0, 0, 0 }
+	};
+
+	int block_size = 32;
+
+	setlocale(LC_ALL, "");
+	for (;;) {
+		int option_index = 0;
+		int c = getopt_long(argc, argv, "b:hV", long_options, &option_index);
+		if (c == -1) {
+			break;
+		}
+		switch (c) {
+		case 'b':
+			block_size = atoi(optarg);
+			break;
+		case 'h':
+			usage();
+			exit(0);
+		case 'v':
+			version();
+			exit(0);
+		default:
+			exit(1);
+		}
+	}
+
+	if (argc - optind != 2) {
+		usage();
+		exit(1);
+	}
+
+	do_build(argv[optind], argv[optind + 1], block_size);
 	exit(EXIT_SUCCESS);
 }
