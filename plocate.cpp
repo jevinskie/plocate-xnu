@@ -32,8 +32,12 @@
 using namespace std;
 using namespace std::chrono;
 
-#define dprintf(...)
-//#define dprintf(...) fprintf(stderr, __VA_ARGS__);
+#define dprintf(...) \
+	do { \
+		if (use_debug) { \
+			fprintf(stderr, __VA_ARGS__); \
+		} \
+	} while (false)
 
 #include "turbopfor.h"
 
@@ -41,6 +45,7 @@ const char *dbpath = "/var/lib/mlocate/plocate.db";
 bool ignore_case = false;
 bool only_count = false;
 bool print_nul = false;
+bool use_debug = false;
 int64_t limit_matches = numeric_limits<int64_t>::max();
 
 class Serializer {
@@ -590,13 +595,14 @@ int main(int argc, char **argv)
 		{ "ignore-case", no_argument, 0, 'i' },
 		{ "limit", required_argument, 0, 'l' },
 		{ "null", no_argument, 0, '0' },
+		{ "debug", no_argument, 0, 'D' },  // Not documented.
 		{ 0, 0, 0, 0 }
 	};
 
 	setlocale(LC_ALL, "");
 	for (;;) {
 		int option_index = 0;
-		int c = getopt_long(argc, argv, "cd:hil:n:0", long_options, &option_index);
+		int c = getopt_long(argc, argv, "cd:hil:n:0D", long_options, &option_index);
 		if (c == -1) {
 			break;
 		}
@@ -620,8 +626,21 @@ int main(int argc, char **argv)
 		case '0':
 			print_nul = true;
 			break;
+		case 'D':
+			use_debug = true;
+			break;
 		default:
 			exit(1);
+		}
+	}
+
+	if (use_debug) {
+		// Debug information would leak information about which files exist,
+		// so drop setgid before we open the file; one would either need to run
+		// as root, or use a locally-built file.
+		if (setgid(getgid()) != 0) {
+			perror("setgid");
+			exit(EXIT_FAILURE);
 		}
 	}
 
