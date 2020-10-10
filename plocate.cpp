@@ -47,6 +47,8 @@ bool ignore_case = false;
 bool only_count = false;
 bool print_nul = false;
 bool use_debug = false;
+bool patterns_are_regex = false;
+bool use_extended_regex = false;
 int64_t limit_matches = numeric_limits<int64_t>::max();
 
 class Serializer {
@@ -96,7 +98,7 @@ void Serializer::release_current()
 
 struct Needle {
 	enum { STRSTR,
-	       REGEX,  // Not currently used.
+	       REGEX,
 	       GLOB } type;
 	string str;  // Filled in no matter what.
 	regex_t re;  // For REGEX.
@@ -400,11 +402,17 @@ void do_search_file(const vector<Needle> &needles, const char *filename)
 	dprintf("Corpus init done after %.1f ms.\n", 1e3 * duration<float>(steady_clock::now() - start).count());
 
 	vector<TrigramDisjunction> trigram_groups;
-	for (const Needle &needle : needles) {
-		if (needle.str.size() < 3)
-			continue;
-		parse_trigrams(needle.str, ignore_case, &trigram_groups);
+	if (patterns_are_regex) {
+		// We could parse the regex to find trigrams that have to be there
+		// (there are actually known algorithms to deal with disjunctions
+		// and such, too), but for now, we just go brute force.
+		// Using locate with regexes is pretty niche.
+	} else {
+		for (const Needle &needle : needles) {
+			parse_trigrams(needle.str, ignore_case, &trigram_groups);
+		}
 	}
+
 	unique_sort(
 		&trigram_groups,
 		[](const TrigramDisjunction &a, const TrigramDisjunction &b) { return a.trigram_alternatives < b.trigram_alternatives; },
@@ -573,6 +581,26 @@ string unescape_glob_to_plain_string(const string &needle)
 	return unescaped;
 }
 
+regex_t compile_regex(const string &needle)
+{
+	regex_t re;
+	int flags = REG_NOSUB;
+	if (ignore_case) {
+		flags |= REG_ICASE;
+	}
+	if (use_extended_regex) {
+		flags |= REG_EXTENDED;
+	}
+	int err = regcomp(&re, needle.c_str(), flags);
+	if (err != 0) {
+		char errbuf[256];
+		regerror(err, &re, errbuf, sizeof(errbuf));
+		fprintf(stderr, "Error when compiling regex '%s': %s\n", needle.c_str(), errbuf);
+		exit(1);
+	}
+	return re;
+}
+
 void usage()
 {
 	printf(
@@ -584,6 +612,8 @@ void usage()
 		"  -i, --ignore-case      search case-insensitively\n"
 		"  -l, --limit LIMIT      stop after LIMIT matches\n"
 		"  -0, --null             delimit matches by NUL instead of newline\n"
+		"  -r, --regexp           interpret patterns as basic regexps (slow)\n"
+		"      --regex            interpret patterns as extended regexps (slow)\n"
 		"      --help             print this help\n"
 		"      --version          print version information\n");
 }
@@ -600,6 +630,7 @@ void version()
 
 int main(int argc, char **argv)
 {
+	constexpr int EXTENDED_REGEX = 1000;
 	static const struct option long_options[] = {
 		{ "help", no_argument, 0, 'h' },
 		{ "count", no_argument, 0, 'c' },
@@ -608,6 +639,8 @@ int main(int argc, char **argv)
 		{ "limit", required_argument, 0, 'l' },
 		{ "null", no_argument, 0, '0' },
 		{ "version", no_argument, 0, 'V' },
+		{ "regexp", no_argument, 0, 'r' },
+		{ "regex", no_argument, 0, EXTENDED_REGEX },
 		{ "debug", no_argument, 0, 'D' },  // Not documented.
 		{ 0, 0, 0, 0 }
 	};
@@ -639,6 +672,13 @@ int main(int argc, char **argv)
 		case '0':
 			print_nul = true;
 			break;
+		case 'r':
+			patterns_are_regex = true;
+			break;
+		case EXTENDED_REGEX:
+			patterns_are_regex = true;
+			use_extended_regex = true;
+			break;
 		case 'D':
 			use_debug = true;
 			break;
@@ -665,6 +705,7 @@ int main(int argc, char **argv)
 		Needle needle;
 		needle.str = argv[i];
 
+
 		// See if there are any wildcard characters, which indicates we should treat it
 		// as an (anchored) glob.
 		bool any_wildcard = false;
@@ -675,7 +716,10 @@ int main(int argc, char **argv)
 			}
 		}
 
-		if (any_wildcard) {
+		if (patterns_are_regex) {
+			needle.type = Needle::REGEX;
+			needle.re = compile_regex(needle.str);
+		} else if (any_wildcard) {
 			needle.type = Needle::GLOB;
 		} else if (ignore_case) {
 			// strcasestr() doesn't handle locales correctly (even though LSB
