@@ -1,8 +1,10 @@
 #include "db.h"
 #include "io_uring_engine.h"
+#include "parse_trigrams.h"
 #include "unique_sort.h"
 
 #include <algorithm>
+#include <assert.h>
 #include <chrono>
 #include <fcntl.h>
 #include <functional>
@@ -12,6 +14,7 @@
 #include <limits>
 #include <memory>
 #include <queue>
+#include <regex.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -20,6 +23,7 @@
 #include <string_view>
 #include <unistd.h>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 #include <zstd.h>
@@ -33,6 +37,7 @@ using namespace std::chrono;
 #include "turbopfor.h"
 
 const char *dbpath = "/var/lib/mlocate/plocate.db";
+bool ignore_case = false;
 bool only_count = false;
 bool print_nul = false;
 int64_t limit_matches = numeric_limits<int64_t>::max();
@@ -82,19 +87,21 @@ void Serializer::release_current()
 	}
 }
 
-static inline uint32_t read_unigram(const string &s, size_t idx)
-{
-	if (idx < s.size()) {
-		return (unsigned char)s[idx];
-	} else {
-		return 0;
-	}
-}
+struct Needle {
+	enum { STRSTR,
+	       REGEX } type;
+	string str;  // Filled in no matter what.
+	regex_t re;  // For REGEX.
+};
 
-static inline uint32_t read_trigram(const string &s, size_t start)
+bool matches(const Needle &needle, const char *haystack)
 {
-	return read_unigram(s, start) | (read_unigram(s, start + 1) << 8) |
-		(read_unigram(s, start + 2) << 16);
+	if (needle.type == Needle::STRSTR) {
+		return strstr(haystack, needle.str.c_str()) != nullptr;
+	} else {
+		assert(needle.type == Needle::REGEX);
+		return regexec(&needle.re, haystack, /*nmatch=*/0, /*pmatch=*/nullptr, /*flags=*/0) == 0;
+	}
 }
 
 bool has_access(const char *filename,
@@ -202,7 +209,7 @@ size_t Corpus::get_num_filename_blocks() const
 	return hdr.num_docids;
 }
 
-uint64_t scan_file_block(const vector<string> &needles, string_view compressed,
+uint64_t scan_file_block(const vector<Needle> &needles, string_view compressed,
                          unordered_map<string, bool> *access_rx_cache, int seq,
                          Serializer *serializer)
 {
@@ -232,8 +239,8 @@ uint64_t scan_file_block(const vector<string> &needles, string_view compressed,
 	     filename != block.data() + block.size();
 	     filename += strlen(filename) + 1) {
 		bool found = true;
-		for (const string &needle : needles) {
-			if (strstr(filename, needle.c_str()) == nullptr) {
+		for (const Needle &needle : needles) {
+			if (!matches(needle, filename)) {
 				found = false;
 				break;
 			}
@@ -265,7 +272,7 @@ uint64_t scan_file_block(const vector<string> &needles, string_view compressed,
 	return matched;
 }
 
-size_t scan_docids(const vector<string> &needles, const vector<uint32_t> &docids, const Corpus &corpus, IOUringEngine *engine)
+size_t scan_docids(const vector<Needle> &needles, const vector<uint32_t> &docids, const Corpus &corpus, IOUringEngine *engine)
 {
 	Serializer docids_in_order;
 	unordered_map<string, bool> access_rx_cache;
@@ -283,7 +290,7 @@ size_t scan_docids(const vector<string> &needles, const vector<uint32_t> &docids
 // We do this sequentially, as it's faster than scattering
 // a lot of I/O through io_uring and hoping the kernel will
 // coalesce it plus readahead for us.
-uint64_t scan_all_docids(const vector<string> &needles, int fd, const Corpus &corpus, IOUringEngine *engine)
+uint64_t scan_all_docids(const vector<Needle> &needles, int fd, const Corpus &corpus, IOUringEngine *engine)
 {
 	unordered_map<string, bool> access_rx_cache;
 	uint32_t num_blocks = corpus.get_num_filename_blocks();
@@ -310,43 +317,54 @@ uint64_t scan_all_docids(const vector<string> &needles, int fd, const Corpus &co
 	return matched;
 }
 
-// For debugging.
-string print_trigram(uint32_t trgm)
+// Takes the given posting list, unions it into the parts of the trigram disjunction
+// already read; if the list is complete, intersects with “cur_candidates”.
+//
+// Returns true if the search should be aborted (we are done).
+bool new_posting_list_read(TrigramDisjunction *td, vector<uint32_t> decoded, vector<uint32_t> *cur_candidates, vector<uint32_t> *tmp)
 {
-	char ch[3] = {
-		char(trgm & 0xff), char((trgm >> 8) & 0xff), char((trgm >> 16) & 0xff)
-	};
-
-	string str = "'";
-	for (unsigned i = 0; i < 3;) {
-		if (ch[i] == '\\') {
-			str.push_back('\\');
-			str.push_back(ch[i]);
-			++i;
-		} else if (int(ch[i]) >= 32 && int(ch[i]) <= 127) {  // Holds no matter whether char is signed or unsigned.
-			str.push_back(ch[i]);
-			++i;
-		} else {
-			// See if we have an entire UTF-8 codepoint, and that it's reasonably printable.
-			mbtowc(nullptr, 0, 0);
-			wchar_t pwc;
-			int ret = mbtowc(&pwc, ch + i, 3 - i);
-			if (ret >= 1 && pwc >= 32) {
-				str.append(ch + i, ret);
-				i += ret;
+	if (td->docids.empty()) {
+		td->docids = move(decoded);
+	} else {
+		tmp->clear();
+		set_union(decoded.begin(), decoded.end(), td->docids.begin(), td->docids.end(), back_inserter(*tmp));
+		swap(*tmp, td->docids);
+	}
+	if (--td->remaining_trigrams_to_read > 0) {
+		// Need to wait for more.
+		if (ignore_case) {
+			dprintf("  ... %u reads left in OR group %u (%zu docids in list)\n",
+				td->remaining_trigrams_to_read, td->index, td->docids.size());
+		}
+		return false;
+	}
+	if (cur_candidates->empty()) {
+		if (ignore_case) {
+			dprintf("  ... all reads done for OR group %u (%zu docids)\n",
+				td->index, td->docids.size());
+		}
+		*cur_candidates = move(td->docids);
+	} else {
+		tmp->clear();
+		set_intersection(cur_candidates->begin(), cur_candidates->end(),
+		                 td->docids.begin(), td->docids.end(),
+		                 back_inserter(*tmp));
+		swap(*cur_candidates, *tmp);
+		if (ignore_case) {
+			if (cur_candidates->empty()) {
+				dprintf("  ... all reads done for OR group %u (%zu docids), intersected (none left, search is done)\n",
+					td->index, td->docids.size());
+				return true;
 			} else {
-				char buf[16];
-				snprintf(buf, sizeof(buf), "\\x{%02x}", (unsigned char)ch[i]);
-				str += buf;
-				++i;
+				dprintf("  ... all reads done for OR group %u (%zu docids), intersected (%zu left)\n",
+					td->index, td->docids.size(), cur_candidates->size());
 			}
 		}
 	}
-	str += "'";
-	return str;
+	return false;
 }
 
-void do_search_file(const vector<string> &needles, const char *filename)
+void do_search_file(const vector<Needle> &needles, const char *filename)
 {
 	int fd = open(filename, O_RDONLY);
 	if (fd == -1) {
@@ -370,28 +388,31 @@ void do_search_file(const vector<string> &needles, const char *filename)
 	Corpus corpus(fd, &engine);
 	dprintf("Corpus init done after %.1f ms.\n", 1e3 * duration<float>(steady_clock::now() - start).count());
 
-	vector<pair<Trigram, size_t>> trigrams;
-	for (const string &needle : needles) {
-		if (needle.size() < 3)
+	vector<TrigramDisjunction> trigram_groups;
+	for (const Needle &needle : needles) {
+		if (needle.str.size() < 3)
 			continue;
-		for (size_t i = 0; i < needle.size() - 2; ++i) {
-			uint32_t trgm = read_trigram(needle, i);
-			corpus.find_trigram(trgm, [trgm, &trigrams](const Trigram *trgmptr, size_t len) {
-				if (trgmptr == nullptr) {
-					dprintf("trigram %s isn't found, we abort the search\n", print_trigram(trgm).c_str());
-					if (only_count) {
-						printf("0\n");
-					}
-					exit(0);
-				}
-				trigrams.emplace_back(*trgmptr, len);
-			});
+		parse_trigrams(needle.str, ignore_case, &trigram_groups);
+	}
+	unique_sort(
+		&trigram_groups,
+		[](const TrigramDisjunction &a, const TrigramDisjunction &b) { return a.trigram_alternatives < b.trigram_alternatives; },
+		[](const TrigramDisjunction &a, const TrigramDisjunction &b) { return a.trigram_alternatives == b.trigram_alternatives; });
+
+	// Give them names for debugging.
+	unsigned td_index = 0;
+	for (TrigramDisjunction &td : trigram_groups) {
+		td.index = td_index++;
+	}
+
+	// Collect which trigrams we need to look up in the hash table.
+	unordered_map<uint32_t, vector<TrigramDisjunction *>> trigrams_to_lookup;
+	for (TrigramDisjunction &td : trigram_groups) {
+		for (uint32_t trgm : td.trigram_alternatives) {
+			trigrams_to_lookup[trgm].push_back(&td);
 		}
 	}
-	engine.finish();
-	dprintf("Hashtable lookups done after %.1f ms.\n", 1e3 * duration<float>(steady_clock::now() - start).count());
-
-	if (trigrams.empty()) {
+	if (trigrams_to_lookup.empty()) {
 		// Too short for trigram matching. Apply brute force.
 		// (We could have searched through all trigrams that matched
 		// the pattern and done a union of them, but that's a lot of
@@ -402,61 +423,113 @@ void do_search_file(const vector<string> &needles, const char *filename)
 		}
 		return;
 	}
-	unique_sort(&trigrams);
-	sort(trigrams.begin(), trigrams.end(),
-	     [&](const pair<Trigram, size_t> &a, const pair<Trigram, size_t> &b) {
-		     return a.first.num_docids < b.first.num_docids;
+
+	// Look them all up on disk.
+	for (auto &[trgm, trigram_groups] : trigrams_to_lookup) {
+		corpus.find_trigram(trgm, [trgm{ trgm }, trigram_groups{ &trigram_groups }](const Trigram *trgmptr, size_t len) {
+			if (trgmptr == nullptr) {
+				dprintf("trigram %s isn't found\n", print_trigram(trgm).c_str());
+				for (TrigramDisjunction *td : *trigram_groups) {
+					--td->remaining_trigrams_to_read;
+					if (td->remaining_trigrams_to_read == 0 && td->read_trigrams.empty()) {
+						dprintf("zero matches in %s, so we are done\n", print_td(*td).c_str());
+						if (only_count) {
+							printf("0\n");
+						}
+						exit(0);
+					}
+				}
+				return;
+			}
+			for (TrigramDisjunction *td : *trigram_groups) {
+				--td->remaining_trigrams_to_read;
+				td->max_num_docids += trgmptr->num_docids;
+				td->read_trigrams.emplace_back(*trgmptr, len);
+			}
+		});
+	}
+	engine.finish();
+	dprintf("Hashtable lookups done after %.1f ms.\n", 1e3 * duration<float>(steady_clock::now() - start).count());
+
+	for (TrigramDisjunction &td : trigram_groups) {
+		// Reset for reads.
+		td.remaining_trigrams_to_read = td.read_trigrams.size();
+
+		if (ignore_case) {  // If case-sensitive, they'll all be pretty obvious single-entry groups.
+			dprintf("OR group %u (max_num_docids=%u): %s\n", td.index, td.max_num_docids, print_td(td).c_str());
+		}
+	}
+
+	// TODO: For case-insensitive (ie. more than one alternative in each),
+	// prioritize the ones with fewer seeks?
+	sort(trigram_groups.begin(), trigram_groups.end(),
+	     [&](const TrigramDisjunction &a, const TrigramDisjunction &b) {
+		     return a.max_num_docids < b.max_num_docids;
 	     });
 
-	vector<uint32_t> in1, in2, out;
+	unordered_map<uint32_t, vector<TrigramDisjunction *>> uses_trigram;
+	for (TrigramDisjunction &td : trigram_groups) {
+		for (uint32_t trgm : td.trigram_alternatives) {
+			uses_trigram[trgm].push_back(&td);
+		}
+	}
+
+	unordered_set<uint32_t> trigrams_submitted_read;
+	vector<uint32_t> cur_candidates, tmp, decoded;
 	bool done = false;
-	for (auto [trgmptr, len] : trigrams) {
-		if (!in1.empty() && trgmptr.num_docids > in1.size() * 100) {
-			uint32_t trgm __attribute__((unused)) = trgmptr.trgm;
-			dprintf("trigram %s (%zu bytes) has %u entries, ignoring the rest (will "
+	for (TrigramDisjunction &td : trigram_groups) {
+		if (!cur_candidates.empty() && td.max_num_docids > cur_candidates.size() * 100) {
+			dprintf("%s has up to %u entries, ignoring the rest (will "
 			        "weed out false positives later)\n",
-			        print_trigram(trgm).c_str(), len, trgmptr.num_docids);
+			        print_td(td).c_str(), td.max_num_docids);
 			break;
 		}
 
-		// Only stay a certain amount ahead, so that we don't spend I/O
-		// on reading the latter, large posting lists. We are unlikely
-		// to need them anyway, even if they should come in first.
-		if (engine.get_waiting_reads() >= 5) {
-			engine.finish();
-			if (done)
-				break;
-		}
-		engine.submit_read(fd, len, trgmptr.offset, [trgmptr{ trgmptr }, len{ len }, &done, &in1, &in2, &out](string_view s) {
-			if (done)
-				return;
-			uint32_t trgm __attribute__((unused)) = trgmptr.trgm;
-			size_t num = trgmptr.num_docids;
-			const unsigned char *pldata = reinterpret_cast<const unsigned char *>(s.data());
-			if (in1.empty()) {
-				in1.resize(num + 128);
-				decode_pfor_delta1_128(pldata, num, /*interleaved=*/true, &in1[0]);
-				in1.resize(num);
-				dprintf("trigram %s (%zu bytes) decoded to %zu entries\n",
-				        print_trigram(trgm).c_str(), len, num);
-			} else {
-				if (in2.size() < num + 128) {
-					in2.resize(num + 128);
-				}
-				decode_pfor_delta1_128(pldata, num, /*interleaved=*/true, &in2[0]);
-
-				out.clear();
-				set_intersection(in1.begin(), in1.end(), in2.begin(), in2.begin() + num,
-				                 back_inserter(out));
-				swap(in1, out);
-				dprintf("trigram %s (%zu bytes) decoded to %zu entries, %zu left\n",
-				        print_trigram(trgm).c_str(), len, num, in1.size());
-				if (in1.empty()) {
-					dprintf("no matches (intersection list is empty)\n");
-					done = true;
-				}
+		for (auto &[trgmptr, len] : td.read_trigrams) {
+			if (trigrams_submitted_read.count(trgmptr.trgm) != 0) {
+				continue;
 			}
-		});
+			trigrams_submitted_read.insert(trgmptr.trgm);
+			// Only stay a certain amount ahead, so that we don't spend I/O
+			// on reading the latter, large posting lists. We are unlikely
+			// to need them anyway, even if they should come in first.
+			if (engine.get_waiting_reads() >= 5) {
+				engine.finish();
+				if (done)
+					break;
+			}
+			engine.submit_read(fd, len, trgmptr.offset, [trgmptr{ trgmptr }, len{ len }, &done, &cur_candidates, &tmp, &decoded, &uses_trigram](string_view s) {
+				if (done)
+					return;
+
+				uint32_t trgm __attribute__((unused)) = trgmptr.trgm;
+				const unsigned char *pldata = reinterpret_cast<const unsigned char *>(s.data());
+				size_t num = trgmptr.num_docids;
+				decoded.resize(num);
+				decode_pfor_delta1_128(pldata, num, /*interleaved=*/true, &decoded[0]);
+
+				assert(uses_trigram.count(trgm) != 0);
+				bool was_empty = cur_candidates.empty();
+				if (ignore_case) {
+					dprintf("trigram %s (%zu bytes) decoded to %zu entries\n", print_trigram(trgm).c_str(), len, num);
+				}
+
+				for (TrigramDisjunction *td : uses_trigram[trgm]) {
+					done |= new_posting_list_read(td, decoded, &cur_candidates, &tmp);
+					if (done)
+						break;
+				}
+				if (!ignore_case) {
+					if (was_empty) {
+						dprintf("trigram %s (%zu bytes) decoded to %zu entries\n", print_trigram(trgm).c_str(), len, num);
+					} else if (cur_candidates.empty()) {
+						dprintf("trigram %s (%zu bytes) decoded to %zu entries (none left, search is done)\n", print_trigram(trgm).c_str(), len, num);
+					} else {
+						dprintf("trigram %s (%zu bytes) decoded to %zu entries (%zu left)\n", print_trigram(trgm).c_str(), len, num, cur_candidates.size());
+					}
+				}
+			});
+		}
 	}
 	engine.finish();
 	if (done) {
@@ -465,13 +538,53 @@ void do_search_file(const vector<string> &needles, const char *filename)
 	dprintf("Intersection done after %.1f ms. Doing final verification and printing:\n",
 	        1e3 * duration<float>(steady_clock::now() - start).count());
 
-	uint64_t matched = scan_docids(needles, in1, corpus, &engine);
+	uint64_t matched = scan_docids(needles, cur_candidates, corpus, &engine);
 	dprintf("Done in %.1f ms, found %zu matches.\n",
 	        1e3 * duration<float>(steady_clock::now() - start).count(), matched);
 
 	if (only_count) {
 		printf("%zu\n", matched);
 	}
+}
+
+regex_t needle_to_regex(const string &needle)
+{
+	string escaped_needle;
+	for (char ch : needle) {
+		switch (ch) {
+		// Directly from what regex(7) considers an “atom”.
+		case '^':
+		case '.':
+		case '[':
+		case '$':
+		case '(':
+		case ')':
+		case '|':
+		case '*':
+		case '+':
+		case '?':
+		case '{':
+		case '\\':
+			escaped_needle.push_back('\\');
+			// Fall through.
+		default:
+			escaped_needle.push_back(ch);
+		}
+	}
+	regex_t re;
+	int err;
+	if (ignore_case) {
+		err = regcomp(&re, escaped_needle.c_str(), REG_NOSUB | REG_ICASE);
+	} else {
+		err = regcomp(&re, escaped_needle.c_str(), REG_NOSUB);
+	}
+	if (err != 0) {
+		char errbuf[256];
+		regerror(err, &re, errbuf, sizeof(errbuf));
+		fprintf(stderr, "Error when compiling regex for '%s': %s\n", needle.c_str(), errbuf);
+		exit(1);
+	}
+	return re;
 }
 
 void usage()
@@ -483,6 +596,7 @@ void usage()
 	printf("  -d, --database DBPATH  use DBPATH instead of default database (which is\n");
 	printf("                         %s)\n", dbpath);
 	printf("  -h, --help             print this help\n");
+	printf("  -i, --ignore-case      ignore case distinctions when matching patterns\n");
 	printf("  -l, --limit, -n LIMIT  limit output (or counting) to LIMIT entries\n");
 	printf("  -0, --null             separate entries with NUL on output\n");
 }
@@ -493,6 +607,7 @@ int main(int argc, char **argv)
 		{ "help", no_argument, 0, 'h' },
 		{ "count", no_argument, 0, 'c' },
 		{ "database", required_argument, 0, 'd' },
+		{ "ignore-case", no_argument, 0, 'i' },
 		{ "limit", required_argument, 0, 'l' },
 		{ nullptr, required_argument, 0, 'n' },
 		{ "null", no_argument, 0, '0' },
@@ -502,7 +617,7 @@ int main(int argc, char **argv)
 	setlocale(LC_ALL, "");
 	for (;;) {
 		int option_index = 0;
-		int c = getopt_long(argc, argv, "cd:hl:n:0", long_options, &option_index);
+		int c = getopt_long(argc, argv, "cd:hil:n:0", long_options, &option_index);
 		if (c == -1) {
 			break;
 		}
@@ -516,6 +631,9 @@ int main(int argc, char **argv)
 		case 'h':
 			usage();
 			exit(0);
+		case 'i':
+			ignore_case = true;
+			break;
 		case 'l':
 		case 'n':
 			limit_matches = atoll(optarg);
@@ -528,9 +646,22 @@ int main(int argc, char **argv)
 		}
 	}
 
-	vector<string> needles;
+	vector<Needle> needles;
 	for (int i = optind; i < argc; ++i) {
-		needles.push_back(argv[i]);
+		Needle needle;
+		needle.str = argv[i];
+		if (ignore_case) {
+			// strcasestr() doesn't handle locales correctly (even though LSB
+			// claims it should), but somehow, the glibc regex engine does.
+			// It's much slower than strstr() for non-case-sensitive searches, though
+			// (even though it really ought to be faster, since it can precompile),
+			// so only use it for that.
+			needle.type = Needle::REGEX;
+			needle.re = needle_to_regex(argv[i]);
+		} else {
+			needle.type = Needle::STRSTR;
+		}
+		needles.push_back(move(needle));
 	}
 	if (needles.empty()) {
 		fprintf(stderr, "plocate: no pattern to search for specified\n");
