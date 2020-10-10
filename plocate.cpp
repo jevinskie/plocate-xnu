@@ -584,6 +584,17 @@ void usage()
 	printf("  -i, --ignore-case      ignore case distinctions when matching patterns\n");
 	printf("  -l, --limit, -n LIMIT  limit output (or counting) to LIMIT entries\n");
 	printf("  -0, --null             separate entries with NUL on output\n");
+	printf("  -V, --version          print version information\n");
+}
+
+void version()
+{
+	printf("plocate %s\n", PLOCATE_VERSION);
+	printf("Copyright 2020 Steinar H. Gunderson\n");
+	printf("License GPLv2+: GNU GPL version 2 or later <https://gnu.org/licenses/gpl.html>.\n");
+	printf("This is free software: you are free to change and redistribute it.\n");
+	printf("There is NO WARRANTY, to the extent permitted by law.\n");
+	exit(0);
 }
 
 int main(int argc, char **argv)
@@ -595,6 +606,7 @@ int main(int argc, char **argv)
 		{ "ignore-case", no_argument, 0, 'i' },
 		{ "limit", required_argument, 0, 'l' },
 		{ "null", no_argument, 0, '0' },
+		{ "version", no_argument, 0, 'V' },
 		{ "debug", no_argument, 0, 'D' },  // Not documented.
 		{ 0, 0, 0, 0 }
 	};
@@ -602,7 +614,7 @@ int main(int argc, char **argv)
 	setlocale(LC_ALL, "");
 	for (;;) {
 		int option_index = 0;
-		int c = getopt_long(argc, argv, "cd:hil:n:0D", long_options, &option_index);
+		int c = getopt_long(argc, argv, "cd:hil:n:0VD", long_options, &option_index);
 		if (c == -1) {
 			break;
 		}
@@ -628,6 +640,9 @@ int main(int argc, char **argv)
 			break;
 		case 'D':
 			use_debug = true;
+			break;
+		case 'V':
+			version();
 			break;
 		default:
 			exit(1);

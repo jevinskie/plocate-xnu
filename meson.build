@@ -1,5 +1,8 @@
 project('plocate', 'cpp', default_options: ['buildtype=debugoptimized','cpp_std=c++17'], version: '1.0.0-pre')
 
+# Make the version available as a #define.
+add_project_arguments('-DPLOCATE_VERSION="' + meson.project_version() + '"', language: 'cpp')
+
 cxx = meson.get_compiler('cpp')
 uringdep = dependency('liburing', required: false)
 zstddep = dependency('libzstd')
