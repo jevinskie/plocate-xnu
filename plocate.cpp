@@ -7,6 +7,7 @@
 #include <assert.h>
 #include <chrono>
 #include <fcntl.h>
+#include <fnmatch.h>
 #include <functional>
 #include <getopt.h>
 #include <iosfwd>
@@ -89,7 +90,8 @@ void Serializer::release_current()
 
 struct Needle {
 	enum { STRSTR,
-	       REGEX } type;
+	       REGEX,  // Not currently used.
+	       GLOB } type;
 	string str;  // Filled in no matter what.
 	regex_t re;  // For REGEX.
 };
@@ -98,6 +100,9 @@ bool matches(const Needle &needle, const char *haystack)
 {
 	if (needle.type == Needle::STRSTR) {
 		return strstr(haystack, needle.str.c_str()) != nullptr;
+	} else if (needle.type == Needle::GLOB) {
+		int flags = ignore_case ? FNM_CASEFOLD : 0;
+		return fnmatch(needle.str.c_str(), haystack, flags) == 0;
 	} else {
 		assert(needle.type == Needle::REGEX);
 		return regexec(&needle.re, haystack, /*nmatch=*/0, /*pmatch=*/nullptr, /*flags=*/0) == 0;
@@ -547,44 +552,19 @@ void do_search_file(const vector<Needle> &needles, const char *filename)
 	}
 }
 
-regex_t needle_to_regex(const string &needle)
+string unescape_glob_to_plain_string(const string &needle)
 {
-	string escaped_needle;
-	for (char ch : needle) {
-		switch (ch) {
-		// Directly from what regex(7) considers an “atom”.
-		case '^':
-		case '.':
-		case '[':
-		case '$':
-		case '(':
-		case ')':
-		case '|':
-		case '*':
-		case '+':
-		case '?':
-		case '{':
-		case '\\':
-			escaped_needle.push_back('\\');
-			// Fall through.
-		default:
-			escaped_needle.push_back(ch);
+	string unescaped;
+	for (size_t i = 0; i < needle.size(); i += read_unigram(needle, i).second) {
+		uint32_t ch = read_unigram(needle, i).first;
+		assert(ch != WILDCARD_UNIGRAM);
+		if (ch == PREMATURE_END_UNIGRAM) {
+			fprintf(stderr, "Pattern '%s' ended prematurely\n", needle.c_str());
+			exit(1);
 		}
+		unescaped.push_back(ch);
 	}
-	regex_t re;
-	int err;
-	if (ignore_case) {
-		err = regcomp(&re, escaped_needle.c_str(), REG_NOSUB | REG_ICASE);
-	} else {
-		err = regcomp(&re, escaped_needle.c_str(), REG_NOSUB);
-	}
-	if (err != 0) {
-		char errbuf[256];
-		regerror(err, &re, errbuf, sizeof(errbuf));
-		fprintf(stderr, "Error when compiling regex for '%s': %s\n", needle.c_str(), errbuf);
-		exit(1);
-	}
-	return re;
+	return unescaped;
 }
 
 void usage()
@@ -650,16 +630,28 @@ int main(int argc, char **argv)
 	for (int i = optind; i < argc; ++i) {
 		Needle needle;
 		needle.str = argv[i];
-		if (ignore_case) {
+
+		// See if there are any wildcard characters, which indicates we should treat it
+		// as an (anchored) glob.
+		bool any_wildcard = false;
+		for (size_t i = 0; i < needle.str.size(); i += read_unigram(needle.str, i).second) {
+			if (read_unigram(needle.str, i).first == WILDCARD_UNIGRAM) {
+				any_wildcard = true;
+				break;
+			}
+		}
+
+		if (any_wildcard) {
+			needle.type = Needle::GLOB;
+		} else if (ignore_case) {
 			// strcasestr() doesn't handle locales correctly (even though LSB
-			// claims it should), but somehow, the glibc regex engine does.
-			// It's much slower than strstr() for non-case-sensitive searches, though
-			// (even though it really ought to be faster, since it can precompile),
-			// so only use it for that.
-			needle.type = Needle::REGEX;
-			needle.re = needle_to_regex(argv[i]);
+			// claims it should), but somehow, fnmatch() does, and it's about
+			// the same speed as using a regex.
+			needle.type = Needle::GLOB;
+			needle.str = "*" + needle.str + "*";
 		} else {
 			needle.type = Needle::STRSTR;
+			needle.str = unescape_glob_to_plain_string(needle.str);
 		}
 		needles.push_back(move(needle));
 	}

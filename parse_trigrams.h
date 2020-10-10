@@ -53,6 +53,19 @@ struct TrigramDisjunction {
 // getting their own trigram).
 void parse_trigrams(const std::string &needle, bool ignore_case, std::vector<TrigramDisjunction> *trigram_groups);
 
+static constexpr uint32_t WILDCARD_UNIGRAM = 0xFF000000;
+static constexpr uint32_t PREMATURE_END_UNIGRAM = 0xFF000001;
+
+// Reads a unigram, taking into account escaping (\<foo> becomes <foo>).
+// Returns WILDCARD_UNIGRAM if there's an invalid unigram, ie., we found
+// a glob character (?, * or a [] group). Returns EOS_UNIGRAM if we went
+// past the end of the string, e.g., a string that ends in a backslash.
+// The second element is always the length.
+std::pair<uint32_t, size_t> read_unigram(const std::string &s, size_t start);
+
+// Reads a trigram, ie., three calls to read_unigram(). Needs to start on a valid unigram.
+// Returns WILDCARD_UNIGRAM or PREMATURE_END_UNIGRAM of either of those occurred
+// during reading of the string.
 uint32_t read_trigram(const std::string &s, size_t start);
 
 // For debugging.
