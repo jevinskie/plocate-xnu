@@ -334,14 +334,14 @@ bool new_posting_list_read(TrigramDisjunction *td, vector<uint32_t> decoded, vec
 		// Need to wait for more.
 		if (ignore_case) {
 			dprintf("  ... %u reads left in OR group %u (%zu docids in list)\n",
-				td->remaining_trigrams_to_read, td->index, td->docids.size());
+			        td->remaining_trigrams_to_read, td->index, td->docids.size());
 		}
 		return false;
 	}
 	if (cur_candidates->empty()) {
 		if (ignore_case) {
 			dprintf("  ... all reads done for OR group %u (%zu docids)\n",
-				td->index, td->docids.size());
+			        td->index, td->docids.size());
 		}
 		*cur_candidates = move(td->docids);
 	} else {
@@ -353,11 +353,11 @@ bool new_posting_list_read(TrigramDisjunction *td, vector<uint32_t> decoded, vec
 		if (ignore_case) {
 			if (cur_candidates->empty()) {
 				dprintf("  ... all reads done for OR group %u (%zu docids), intersected (none left, search is done)\n",
-					td->index, td->docids.size());
+				        td->index, td->docids.size());
 				return true;
 			} else {
 				dprintf("  ... all reads done for OR group %u (%zu docids), intersected (%zu left)\n",
-					td->index, td->docids.size(), cur_candidates->size());
+				        td->index, td->docids.size(), cur_candidates->size());
 			}
 		}
 	}
