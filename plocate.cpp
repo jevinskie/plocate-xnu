@@ -589,7 +589,6 @@ int main(int argc, char **argv)
 		{ "database", required_argument, 0, 'd' },
 		{ "ignore-case", no_argument, 0, 'i' },
 		{ "limit", required_argument, 0, 'l' },
-		{ nullptr, required_argument, 0, 'n' },
 		{ "null", no_argument, 0, '0' },
 		{ 0, 0, 0, 0 }
 	};
