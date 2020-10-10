@@ -1,5 +1,6 @@
 #include "db.h"
 #include "io_uring_engine.h"
+#include "unique_sort.h"
 
 #include <algorithm>
 #include <chrono>
@@ -401,11 +402,7 @@ void do_search_file(const vector<string> &needles, const char *filename)
 		}
 		return;
 	}
-	sort(trigrams.begin(), trigrams.end());
-	{
-		auto last = unique(trigrams.begin(), trigrams.end());
-		trigrams.erase(last, trigrams.end());
-	}
+	unique_sort(&trigrams);
 	sort(trigrams.begin(), trigrams.end(),
 	     [&](const pair<Trigram, size_t> &a, const pair<Trigram, size_t> &b) {
 		     return a.first.num_docids < b.first.num_docids;
