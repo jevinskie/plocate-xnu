@@ -1,6 +1,7 @@
 #include "db.h"
 #include "io_uring_engine.h"
 #include "parse_trigrams.h"
+#include "turbopfor.h"
 #include "unique_sort.h"
 
 #include <algorithm>
@@ -39,9 +40,9 @@ using namespace std::chrono;
 		} \
 	} while (false)
 
-#include "turbopfor.h"
+#define DEFAULT_DBPATH "/var/lib/mlocate/plocate.db"
 
-const char *dbpath = "/var/lib/mlocate/plocate.db";
+const char *dbpath = DEFAULT_DBPATH;
 bool ignore_case = false;
 bool only_count = false;
 bool print_nul = false;
@@ -574,17 +575,17 @@ string unescape_glob_to_plain_string(const string &needle)
 
 void usage()
 {
-	// The help text comes from mlocate.
-	printf("Usage: plocate [OPTION]... PATTERN...\n");
-	printf("\n");
-	printf("  -c, --count            only print number of found entries\n");
-	printf("  -d, --database DBPATH  use DBPATH instead of default database (which is\n");
-	printf("                         %s)\n", dbpath);
-	printf("  -h, --help             print this help\n");
-	printf("  -i, --ignore-case      ignore case distinctions when matching patterns\n");
-	printf("  -l, --limit, -n LIMIT  limit output (or counting) to LIMIT entries\n");
-	printf("  -0, --null             separate entries with NUL on output\n");
-	printf("  -V, --version          print version information\n");
+	printf(
+		"Usage: plocate [OPTION]... PATTERN...\n"
+		"\n"
+		"  -c, --count            print number of matches instead of the matches\n"
+		"  -d, --database DBPATH  search for files in DBPATH\n"
+		"                         (default is " DEFAULT_DBPATH ")\n"
+		"  -i, --ignore-case      search case-insensitively\n"
+		"  -l, --limit LIMIT      stop after LIMIT matches\n"
+		"  -0, --null             delimit matches by NUL instead of newline\n"
+		"      --help             print this help\n"
+		"      --version          print version information\n");
 }
 
 void version()
