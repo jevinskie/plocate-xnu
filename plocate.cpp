@@ -668,6 +668,10 @@ int main(int argc, char **argv)
 		case 'l':
 		case 'n':
 			limit_matches = atoll(optarg);
+			if (limit_matches <= 0) {
+				fprintf(stderr, "Error: limit must be a strictly positive number.\n");
+				exit(1);
+			}
 			break;
 		case '0':
 			print_nul = true;
