@@ -709,7 +709,6 @@ int main(int argc, char **argv)
 		Needle needle;
 		needle.str = argv[i];
 
-
 		// See if there are any wildcard characters, which indicates we should treat it
 		// as an (anchored) glob.
 		bool any_wildcard = false;
