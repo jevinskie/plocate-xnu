@@ -160,7 +160,7 @@ private:
 
 void AccessRXCache::check_access(const char *filename, bool allow_async, function<void(bool)> cb)
 {
-	if (!engine->get_supports_stat()) {
+	if (engine == nullptr || !engine->get_supports_stat()) {
 		allow_async = false;
 	}
 
@@ -304,7 +304,7 @@ size_t Corpus::get_num_filename_blocks() const
 }
 
 void scan_file_block(const vector<Needle> &needles, string_view compressed,
-                     AccessRXCache *access_rx_cache, uint64_t seq, Serializer *serializer, IOUringEngine *engine,
+                     AccessRXCache *access_rx_cache, uint64_t seq, Serializer *serializer,
                      size_t *matched)
 {
 	unsigned long long uncompressed_len = ZSTD_getFrameContentSize(compressed.data(), compressed.size());
@@ -373,8 +373,8 @@ size_t scan_docids(const vector<Needle> &needles, const vector<uint32_t> &docids
 	uint64_t matched = 0;
 	for (size_t i = 0; i < docids.size(); ++i) {
 		uint32_t docid = docids[i];
-		corpus.get_compressed_filename_block(docid, [i, &matched, &needles, &access_rx_cache, engine, &docids_in_order](string_view compressed) {
-			scan_file_block(needles, compressed, &access_rx_cache, i, &docids_in_order, engine, &matched);
+		corpus.get_compressed_filename_block(docid, [i, &matched, &needles, &access_rx_cache, &docids_in_order](string_view compressed) {
+			scan_file_block(needles, compressed, &access_rx_cache, i, &docids_in_order, &matched);
 		});
 	}
 	engine->finish();
@@ -384,9 +384,10 @@ size_t scan_docids(const vector<Needle> &needles, const vector<uint32_t> &docids
 // We do this sequentially, as it's faster than scattering
 // a lot of I/O through io_uring and hoping the kernel will
 // coalesce it plus readahead for us.
-uint64_t scan_all_docids(const vector<Needle> &needles, int fd, const Corpus &corpus, IOUringEngine *engine)
+uint64_t scan_all_docids(const vector<Needle> &needles, int fd, const Corpus &corpus)
 {
-	AccessRXCache access_rx_cache(engine);
+	AccessRXCache access_rx_cache(nullptr);
+	Serializer serializer;  // Mostly dummy; handles only the limit.
 	uint32_t num_blocks = corpus.get_num_filename_blocks();
 	unique_ptr<uint64_t[]> offsets(new uint64_t[num_blocks + 1]);
 	complete_pread(fd, offsets.get(), (num_blocks + 1) * sizeof(uint64_t), corpus.offset_for_block(0));
@@ -403,7 +404,7 @@ uint64_t scan_all_docids(const vector<Needle> &needles, int fd, const Corpus &co
 		for (uint32_t docid = io_docid; docid < last_docid; ++docid) {
 			size_t relative_offset = offsets[docid] - offsets[io_docid];
 			size_t len = offsets[docid + 1] - offsets[docid];
-			scan_file_block(needles, { &compressed[relative_offset], len }, &access_rx_cache, 0, nullptr, engine, &matched);
+			scan_file_block(needles, { &compressed[relative_offset], len }, &access_rx_cache, docid, &serializer, &matched);
 		}
 	}
 	return matched;
@@ -515,7 +516,7 @@ void do_search_file(const vector<Needle> &needles, const char *filename)
 		// (We could have searched through all trigrams that matched
 		// the pattern and done a union of them, but that's a lot of
 		// work for fairly unclear gain.)
-		uint64_t matched = scan_all_docids(needles, fd, corpus, &engine);
+		uint64_t matched = scan_all_docids(needles, fd, corpus);
 		if (only_count) {
 			printf("%" PRId64 "\n", matched);
 		}
