@@ -22,11 +22,11 @@ executable('plocate-build', 'plocate-build.cpp',
 
 conf_data = configuration_data()
 conf_data.set('sbindir', get_option('prefix') + '/' + get_option('sbindir'))
-configure_file(input: 'update-plocate.sh',
+update_script = configure_file(input: 'update-plocate.sh',
                output: 'update-plocate.sh',
                configuration: conf_data)
 
-install_data('update-plocate.sh',
+install_data(update_script,
 	install_dir: '/etc/cron.daily',
 	rename: 'plocate')
 install_man('plocate.1')
