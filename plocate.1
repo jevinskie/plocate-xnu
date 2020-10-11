@@ -1,0 +1,127 @@
+.TH locate 1 "Oct 2020" plocate
+.SH NAME
+plocate \- find files by name, quickly
+
+.SH SYNOPSIS
+.B plocate
+.I "[OPTION]..."
+.I "PATTERN..."
+
+.SH DESCRIPTION
+.B plocate
+finds all files on the system matching the given pattern (or all
+of the patterns if multiple are given). It does this by means of
+an index made by
+.BR plocate-build (8),
+which in turn reads the database made by 
+.BR updatedb (8).
+
+plocate is largely compatible with
+.BR mlocate (1),
+and reuses its database to create its index, but is significantly
+faster. In particular, it rarely needs to scan through its entire
+database, unless the pattern is very short (less than three bytes)
+or you want to search for a regular expression. It does not try to
+maintain compatibility with BSD locate, or non-UTF-8 filenames
+and locales. Most I/O is done asynchronously, but the results are
+synchronized so that output comes in the same order every time.
+
+When multiple patterns are given,
+.B plocate
+will search for files that match
+.I all
+of them. This is the main incompatibility with
+.BR mlocate (1),
+which searches for files that match one or more patterns, unless
+the \-a option is given.
+
+By default, patterns are taken to be substrings to search for.
+If at least one non-escaped globbing metacharacter (*, ? or []) is given,
+that pattern is instead taken to be a glob pattern (which means it needs
+to start and end in * for a substring match). If
+.B --regexp
+is given, patterns are instead taken to be (non-anchored) POSIX basic
+regular expressions, and if
+.B --regex
+is given, patterns are taken to be POSIX extended regular expressions.
+All of this matches
+.BR mlocate (1)
+behavior.
+
+Like
+.BR mlocate(1),
+shows all files visible to the calling user (by virtue of
+having read and execute permissions on all parent directories),
+and none that are not, by means of running with the setgid
+bit set to access the index (which is built as root), but by
+testing visibility as the calling user.
+
+.SH OPTIONS
+.TP
+\fB\-c\fR, \fB\-\-count\fR
+Do not print each match. Instead, count them, and print out a total
+number at the end.
+
+.TP
+\fB\-d\fR, \fB\-\-database\fR \fIDBPATH\fR
+Find matches in \fB/var/lib/mlocate/plocate.db\fR, instead of the given database.
+(
+.B plocate
+does not currently support multiple databases.)
+
+.TP
+\fB\-i\fR, \fB\-\-ignore\-case\fR
+Do a case-insensitive match as given by the current locale
+(default is case-sensitive, byte-by-byte match). Note that
+.B plocate
+does not support the full range of Unicode case folding rules;
+in particular, searching for \fIß\fR will not give you matches on \fIss\fR
+even in a German locale. Also note that this option will be
+somewhat slower than a case-sensitive match, since it needs to
+generate more candidates for searching the index.
+
+.TP
+\fB\-l\fR, \fB\-\-limit\fR \fILIMIT\fR
+Stop searching after
+.I LIMIT
+matches have been found. If
+.B \-\-count
+is given, the number printed out will be at most \fILIMIT\fR.
+
+.TP
+\fB\-0\fR, \fB\-\-null\fR
+Instead of writing a newline after every match, write a NUL
+(ASCII 0). This is useful for creating unambiguous output
+when it is to be processed by other tools (like \fBxargs\fP(1)), as filenames are
+allowed to contain embedded newlines.
+
+.TP
+\fB\-r\fR, \fB\-\-regexp\fR
+Patterns are taken to be POSIX basic regular expressions.
+See
+.BR regex(7)
+for more information. Note that this forces a linear scan
+through the entire database, which is slow.
+
+.TP
+.B \-\-regex
+Like \fB\-\-regexp\fR, but patterns are instead taken to
+be POSIX
+.I extended
+regular expressions.
+
+.TP
+.B \-\-help
+Print out usage information, then exit successfully.
+
+.TP
+.B \-\-version
+Print out version information, then exit successfully.
+
+.SH AUTHOR
+Steinar H. Gunderson <steinar+plocate@gunderson.no>
+
+.SH SEE ALSO
+\fBplocate-build\fP(8),
+\fBmlocate\fP(1),
+\fBupdatedb\fP(8)

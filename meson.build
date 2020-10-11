@@ -23,6 +23,8 @@ executable('plocate-build', 'plocate-build.cpp',
 install_data('update-plocate.sh',
 	install_dir: '/etc/cron.daily',
 	rename: 'plocate')
+install_man('plocate.1')
+install_man('plocate-build.8')
 
 # Requires having TurboPFor checked out, so not built by default.
 # Unless you have a recent Meson, there's no apparently good way
