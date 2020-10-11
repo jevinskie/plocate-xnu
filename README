@@ -1,15 +1,31 @@
-plocate, a locate based on posting lists, consuming mlocate inputs
-and making a much faster index. Does not support querying by regex,
-case-insensitivity or really any options.
+plocate is a locate based on posting lists, consuming mlocate's database
+ahead-of-time and making a much faster (and smaller) index out of it.
+It supports most mlocate options; see --help or the man page (man -l plocate.1)
+for more information.
 
-Alpha stage; file format is subject to change. To build, run
+plocate is in beta. The file format is stable, but may still change
+(if so, plocate will notify you itself that you need to rerun
+plocate-build). To build and install, you will need a C++17 compiler
+and a development package for Zstd (https://facebook.github.io/zstd/).
+liburing (https://github.com/axboe/liburing) and a kernel supporting
+io_uring (Linux 5.1 or newer) is optional, but strongly recommended
+for best performance, especially if you do not have an SSD. Installation
+is run as:
 
   meson obj
   cd obj
   ninja
+  sudo ninja install
+
+To build the database for the first time after install, you can do
+
+  sudo /etc/cron.daily/plocate
+
+or equivalently, run the update-plocate.sh script from the source
+directory as root (it is the same file installed to /etc/cron.d).
 
 If you wish to run some tests of the TurboPFor implementation against
-the reference implementation, you can run:
+the reference implementation, you can check it out and run as follows:
 
   git clone https://github.com/powturbo/TurboPFor-Integer-Compression
   ( cd TurboPFor-Integer-Compression && make -j8 )
@@ -17,6 +33,6 @@ the reference implementation, you can run:
   ninja reconfigure
   ninja bench
 
-Copyright 2020 Steinar H. Gunderson <steinar+git@gunderson.no>.
+Copyright 2020 Steinar H. Gunderson <steinar+plocate@gunderson.no>.
 Licensed under the GNU General Public License, either version 2,
 or (at your option) any later version. See the included file COPYING.
