@@ -12,6 +12,7 @@
 #include <fnmatch.h>
 #include <functional>
 #include <getopt.h>
+#include <inttypes.h>
 #include <iosfwd>
 #include <iterator>
 #include <limits>
@@ -432,7 +433,7 @@ void do_search_file(const vector<Needle> &needles, const char *filename)
 		// work for fairly unclear gain.)
 		uint64_t matched = scan_all_docids(needles, fd, corpus, &engine);
 		if (only_count) {
-			printf("%zu\n", matched);
+			printf("%" PRId64 "\n", matched);
 		}
 		return;
 	}
@@ -552,11 +553,11 @@ void do_search_file(const vector<Needle> &needles, const char *filename)
 	        1e3 * duration<float>(steady_clock::now() - start).count());
 
 	uint64_t matched = scan_docids(needles, cur_candidates, corpus, &engine);
-	dprintf("Done in %.1f ms, found %zu matches.\n",
+	dprintf("Done in %.1f ms, found %" PRId64 " matches.\n",
 	        1e3 * duration<float>(steady_clock::now() - start).count(), matched);
 
 	if (only_count) {
-		printf("%zu\n", matched);
+		printf("%" PRId64 "\n", matched);
 	}
 }
 
