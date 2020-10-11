@@ -4,8 +4,8 @@
 #include <algorithm>
 #include <assert.h>
 #include <chrono>
-#include <iosfwd>
 #include <getopt.h>
+#include <iosfwd>
 #include <math.h>
 #include <memory>
 #include <stdint.h>
