@@ -1,4 +1,5 @@
 #include "db.h"
+#include "dprintf.h"
 #include "io_uring_engine.h"
 #include "parse_trigrams.h"
 #include "turbopfor.h"
@@ -32,13 +33,6 @@
 
 using namespace std;
 using namespace std::chrono;
-
-#define dprintf(...) \
-	do { \
-		if (use_debug) { \
-			fprintf(stderr, __VA_ARGS__); \
-		} \
-	} while (false)
 
 #define DEFAULT_DBPATH "/var/lib/mlocate/plocate.db"
 

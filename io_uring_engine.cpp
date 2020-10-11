@@ -5,6 +5,7 @@
 #ifndef WITHOUT_URING
 #include <liburing.h>
 #endif
+#include "dprintf.h"
 #include "io_uring_engine.h"
 
 #include <functional>
@@ -20,8 +21,12 @@ IOUringEngine::IOUringEngine(size_t slop_bytes)
 {
 #ifdef WITHOUT_URING
 	int ret = -1;
+	dprintf("Compiled without liburing support; not using io_uring.\n");
 #else
 	int ret = io_uring_queue_init(queue_depth, &ring, 0);
+	if (ret < 0) {
+		dprintf("io_uring_queue_init() failed; not using io_uring.\n");
+	}
 #endif
 	using_uring = (ret >= 0);
 }
