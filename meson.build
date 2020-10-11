@@ -20,6 +20,12 @@ executable('plocate-build', 'plocate-build.cpp',
 	install: true,
 	install_dir: get_option('sbindir'))
 
+conf_data = configuration_data()
+conf_data.set('sbindir', get_option('prefix') + '/' + get_option('sbindir'))
+configure_file(input: 'update-plocate.sh',
+               output: 'update-plocate.sh',
+               configuration: conf_data)
+
 install_data('update-plocate.sh',
 	install_dir: '/etc/cron.daily',
 	rename: 'plocate')
