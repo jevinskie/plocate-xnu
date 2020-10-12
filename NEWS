@@ -1,0 +1,13 @@
+plocate 1.0.2, October 12th, 2020
+
+  - Various bugfixes.
+
+
+plocate 1.0.1, October 11th, 2020
+
+  - Unbreak linear scanning (for very short patterns, or regexes).
+
+
+plocate 1.0.0, October 11th, 2020
+
+  - Initial release.
