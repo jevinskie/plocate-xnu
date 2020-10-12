@@ -316,8 +316,9 @@ void scan_file_block(const vector<Needle> &needles, string_view compressed,
 	string block;
 	block.resize(uncompressed_len + 1);
 
-	size_t err = ZSTD_decompress(&block[0], block.size(), compressed.data(),
-	                             compressed.size());
+	static ZSTD_DCtx *ctx = ZSTD_createDCtx();  // Reused across calls.
+	size_t err = ZSTD_decompressDCtx(ctx, &block[0], block.size(), compressed.data(),
+	                                 compressed.size());
 	if (ZSTD_isError(err)) {
 		fprintf(stderr, "ZSTD_decompress(): %s\n", ZSTD_getErrorName(err));
 		exit(1);

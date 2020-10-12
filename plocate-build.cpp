@@ -300,7 +300,8 @@ string zstd_compress(const string &src, string *tempbuf)
 	if (tempbuf->size() < max_size) {
 		tempbuf->resize(max_size);
 	}
-	size_t size = ZSTD_compress(&(*tempbuf)[0], max_size, src.data(), src.size(), /*level=*/6);
+	static ZSTD_CCtx *ctx = ZSTD_createCCtx();  // Reused across calls.
+	size_t size = ZSTD_compressCCtx(ctx, &(*tempbuf)[0], max_size, src.data(), src.size(), /*level=*/6);
 	return string(tempbuf->data(), size);
 }
 
