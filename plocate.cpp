@@ -58,7 +58,7 @@ void apply_limit()
 	dprintf("Done in %.1f ms, found %" PRId64 " matches.\n",
 	        1e3 * duration<float>(steady_clock::now() - start).count(), limit_matches);
 	if (only_count) {
-		printf("%ld\n", limit_matches);
+		printf("%" PRId64 "\n", limit_matches);
 	}
 	exit(0);
 }
@@ -305,7 +305,7 @@ size_t Corpus::get_num_filename_blocks() const
 
 void scan_file_block(const vector<Needle> &needles, string_view compressed,
                      AccessRXCache *access_rx_cache, uint64_t seq, Serializer *serializer,
-                     size_t *matched)
+                     uint64_t *matched)
 {
 	unsigned long long uncompressed_len = ZSTD_getFrameContentSize(compressed.data(), compressed.size());
 	if (uncompressed_len == ZSTD_CONTENTSIZE_UNKNOWN || uncompressed_len == ZSTD_CONTENTSIZE_ERROR) {
