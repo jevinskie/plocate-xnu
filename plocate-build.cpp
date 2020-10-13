@@ -1,4 +1,5 @@
 #include "db.h"
+#include "dprintf.h"
 #include "turbopfor-encode.h"
 
 #include <algorithm>
@@ -22,8 +23,6 @@
 #include <zstd.h>
 
 #define P4NENC_BOUND(n) ((n + 127) / 128 + (n + 32) * sizeof(uint32_t))
-#define dprintf(...)
-//#define dprintf(...) fprintf(stderr, __VA_ARGS__);
 
 #define NUM_TRIGRAMS 16777216
 
@@ -33,6 +32,7 @@ using namespace std::chrono;
 string zstd_compress(const string &src, ZSTD_CDict *cdict, string *tempbuf);
 
 constexpr unsigned num_overflow_slots = 16;
+bool use_debug = false;
 
 static inline uint32_t read_unigram(const string_view s, size_t idx)
 {
@@ -222,7 +222,7 @@ string DictionaryBuilder::train(size_t buf_size)
 	string buf;
 	buf.resize(buf_size);
 	size_t ret = ZDICT_trainFromBuffer(&buf[0], buf_size, dictionary_buf.data(), lengths.data(), lengths.size());
-	dprintf(stderr, "Sampled %zu bytes in %zu blocks, built a dictionary of size %zu\n", dictionary_buf.size(), lengths.size(), ret);
+	dprintf("Sampled %zu bytes in %zu blocks, built a dictionary of size %zu\n", dictionary_buf.size(), lengths.size(), ret);
 	buf.resize(ret);
 
 	sampled_blocks.clear();
@@ -261,6 +261,7 @@ public:
 		}
 		return *invindex[trgm];
 	}
+	size_t num_trigrams() const;
 
 private:
 	unique_ptr<PostingListBuilder *[]> invindex;
@@ -315,6 +316,17 @@ void Corpus::flush_block()
 	current_block.clear();
 	num_files_in_block = 0;
 	++num_blocks;
+}
+
+size_t Corpus::num_trigrams() const
+{
+	size_t num = 0;
+	for (unsigned trgm = 0; trgm < NUM_TRIGRAMS; ++trgm) {
+		if (invindex[trgm] != nullptr) {
+			++num;
+		}
+	}
+	return num;
 }
 
 string read_cstr(FILE *fp)
@@ -538,8 +550,9 @@ void do_build(const char *infile, const char *outfile, int block_size)
 		trigrams += pl_builder.num_docids;
 		bytes_for_posting_lists += pl_builder.encoded.size();
 	}
+	size_t num_trigrams = corpus.num_trigrams();
 	dprintf("%zu files, %zu different trigrams, %zu entries, avg len %.2f, longest %zu\n",
-	        corpus.num_files, corpus.invindex.size(), trigrams, double(trigrams) / corpus.invindex.size(), longest_posting_list);
+	        corpus.num_files, num_trigrams, trigrams, double(trigrams) / num_trigrams, longest_posting_list);
 	dprintf("%zu bytes used for posting lists (%.2f bits/entry)\n", bytes_for_posting_lists, 8 * bytes_for_posting_lists / double(trigrams));
 
 	dprintf("Building posting lists took %.1f ms.\n\n", 1e3 * duration<float>(steady_clock::now() - start).count());
@@ -639,6 +652,7 @@ int main(int argc, char **argv)
 		{ "block-size", required_argument, 0, 'b' },
 		{ "help", no_argument, 0, 'h' },
 		{ "version", no_argument, 0, 'V' },
+		{ "debug", no_argument, 0, 'D' },  // Not documented.
 		{ 0, 0, 0, 0 }
 	};
 
@@ -647,7 +661,7 @@ int main(int argc, char **argv)
 	setlocale(LC_ALL, "");
 	for (;;) {
 		int option_index = 0;
-		int c = getopt_long(argc, argv, "b:hV", long_options, &option_index);
+		int c = getopt_long(argc, argv, "b:hVD", long_options, &option_index);
 		if (c == -1) {
 			break;
 		}
@@ -661,6 +675,9 @@ int main(int argc, char **argv)
 		case 'V':
 			version();
 			exit(0);
+		case 'D':
+			use_debug = true;
+			break;
 		default:
 			exit(1);
 		}
