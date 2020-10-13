@@ -49,6 +49,7 @@ int64_t limit_matches = numeric_limits<int64_t>::max();
 int64_t limit_left = numeric_limits<int64_t>::max();
 
 steady_clock::time_point start;
+ZSTD_DDict *ddict = nullptr;
 
 void apply_limit()
 {
@@ -232,6 +233,7 @@ public:
 	{
 		return hdr.filename_index_offset_bytes + docid * sizeof(uint64_t);
 	}
+	const Header &get_hdr() const { return hdr; }
 
 public:
 	const int fd;
@@ -244,7 +246,7 @@ Corpus::Corpus(int fd, IOUringEngine *engine)
 	: fd(fd), engine(engine)
 {
 	// Enable to test cold-cache behavior (except for access()).
-	if (false) {
+	if (true) {
 		off_t len = lseek(fd, 0, SEEK_END);
 		if (len == -1) {
 			perror("lseek");
@@ -258,9 +260,14 @@ Corpus::Corpus(int fd, IOUringEngine *engine)
 		fprintf(stderr, "plocate.db is corrupt or an old version; please rebuild it.\n");
 		exit(1);
 	}
-	if (hdr.version != 0) {
-		fprintf(stderr, "plocate.db has version %u, expected 0; please rebuild it.\n", hdr.version);
+	if (hdr.version != 0 && hdr.version != 1) {
+		fprintf(stderr, "plocate.db has version %u, expected 0 or 1; please rebuild it.\n", hdr.version);
 		exit(1);
+	}
+	if (hdr.version == 0) {
+		// These will be junk data.
+		hdr.zstd_dictionary_offset_bytes = 0;
+		hdr.zstd_dictionary_length_bytes = 0;
 	}
 }
 
@@ -317,8 +324,15 @@ void scan_file_block(const vector<Needle> &needles, string_view compressed,
 	block.resize(uncompressed_len + 1);
 
 	static ZSTD_DCtx *ctx = ZSTD_createDCtx();  // Reused across calls.
-	size_t err = ZSTD_decompressDCtx(ctx, &block[0], block.size(), compressed.data(),
-	                                 compressed.size());
+	size_t err;
+
+	if (ddict != nullptr) {
+		err = ZSTD_decompress_usingDDict(ctx, &block[0], block.size(), compressed.data(),
+		                                 compressed.size(), ddict);
+	} else {
+		err = ZSTD_decompressDCtx(ctx, &block[0], block.size(), compressed.data(),
+		                          compressed.size());
+	}
 	if (ZSTD_isError(err)) {
 		fprintf(stderr, "ZSTD_decompress(): %s\n", ZSTD_getErrorName(err));
 		exit(1);
@@ -387,6 +401,16 @@ size_t scan_docids(const vector<Needle> &needles, const vector<uint32_t> &docids
 // coalesce it plus readahead for us.
 uint64_t scan_all_docids(const vector<Needle> &needles, int fd, const Corpus &corpus)
 {
+	{
+		const Header &hdr = corpus.get_hdr();
+		if (hdr.zstd_dictionary_length_bytes > 0) {
+			string dictionary;
+			dictionary.resize(hdr.zstd_dictionary_length_bytes);
+			complete_pread(fd, &dictionary[0], hdr.zstd_dictionary_length_bytes, hdr.zstd_dictionary_offset_bytes);
+			ddict = ZSTD_createDDict(dictionary.data(), dictionary.size());
+		}
+	}
+
 	AccessRXCache access_rx_cache(nullptr);
 	Serializer serializer;  // Mostly dummy; handles only the limit.
 	uint32_t num_blocks = corpus.get_num_filename_blocks();
@@ -522,6 +546,21 @@ void do_search_file(const vector<Needle> &needles, const char *filename)
 			printf("%" PRId64 "\n", matched);
 		}
 		return;
+	}
+
+	// Sneak in fetching the dictionary, if present. It's not necessarily clear
+	// exactly where it would be cheapest to get it, but it needs to be present
+	// before we can decode any of the posting lists. Most likely, it's
+	// in the same filesystem block as the header anyway, so it should be
+	// present in the cache.
+	{
+		const Header &hdr = corpus.get_hdr();
+		if (hdr.zstd_dictionary_length_bytes > 0) {
+			engine.submit_read(fd, hdr.zstd_dictionary_length_bytes, hdr.zstd_dictionary_offset_bytes, [](string_view s) {
+				ddict = ZSTD_createDDict(s.data(), s.size());
+				dprintf("Dictionary initialized after %.1f ms.\n", 1e3 * duration<float>(steady_clock::now() - start).count());
+			});
+		}
 	}
 
 	// Look them all up on disk.

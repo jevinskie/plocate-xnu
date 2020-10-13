@@ -5,12 +5,17 @@
 
 struct Header {
 	char magic[8];  // "\0plocate";
-	uint32_t version;  // 0.
+	uint32_t version;  // 1.
 	uint32_t hashtable_size;
 	uint32_t extra_ht_slots;
 	uint32_t num_docids;
 	uint64_t hash_table_offset_bytes;
 	uint64_t filename_index_offset_bytes;
+
+	// Version 1 and up only.
+	uint32_t max_version;  // Nominally 1, but can be increased if more features are added in a backward-compatible way.
+	uint32_t zstd_dictionary_length_bytes;
+	uint64_t zstd_dictionary_offset_bytes;
 };
 
 struct Trigram {

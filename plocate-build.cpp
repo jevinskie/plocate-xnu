@@ -8,6 +8,7 @@
 #include <iosfwd>
 #include <math.h>
 #include <memory>
+#include <random>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -17,6 +18,7 @@
 #include <sys/stat.h>
 #include <utility>
 #include <vector>
+#include <zdict.h>
 #include <zstd.h>
 
 #define P4NENC_BOUND(n) ((n + 127) / 128 + (n + 32) * sizeof(uint32_t))
@@ -28,7 +30,7 @@
 using namespace std;
 using namespace std::chrono;
 
-string zstd_compress(const string &src, string *tempbuf);
+string zstd_compress(const string &src, ZSTD_CDict *cdict, string *tempbuf);
 
 constexpr unsigned num_overflow_slots = 16;
 
@@ -141,22 +143,110 @@ void PostingListBuilder::write_header(uint32_t docid)
 	encoded.append(reinterpret_cast<char *>(buf), end - buf);
 }
 
-class Corpus {
+class DatabaseReceiver {
 public:
-	Corpus(FILE *outfp, size_t block_size)
-		: invindex(new PostingListBuilder *[NUM_TRIGRAMS]), outfp(outfp), block_size(block_size)
+	virtual ~DatabaseReceiver() = default;
+	virtual void add_file(string filename) = 0;
+	virtual void flush_block() = 0;
+};
+
+class DictionaryBuilder : public DatabaseReceiver {
+public:
+	DictionaryBuilder(size_t blocks_to_keep, size_t block_size)
+		: blocks_to_keep(blocks_to_keep), block_size(block_size) {}
+	void add_file(string filename) override;
+	void flush_block() override;
+	string train(size_t buf_size);
+
+private:
+	const size_t blocks_to_keep, block_size;
+	string current_block;
+	uint64_t block_num = 0;
+	size_t num_files_in_block = 0;
+
+	std::mt19937 reservoir_rand{ 1234 };  // Fixed seed for reproducibility.
+	bool keep_current_block = true;
+	int64_t slot_for_current_block = -1;
+
+	vector<string> sampled_blocks;
+	vector<size_t> lengths;
+};
+
+void DictionaryBuilder::add_file(string filename)
+{
+	if (keep_current_block) {  // Only bother saving the filenames if we're actually keeping the block.
+		if (!current_block.empty()) {
+			current_block.push_back('\0');
+		}
+		current_block += filename;
+	}
+	if (++num_files_in_block == block_size) {
+		flush_block();
+	}
+}
+
+void DictionaryBuilder::flush_block()
+{
+	if (keep_current_block) {
+		if (slot_for_current_block == -1) {
+			lengths.push_back(current_block.size());
+			sampled_blocks.push_back(move(current_block));
+		} else {
+			lengths[slot_for_current_block] = current_block.size();
+			sampled_blocks[slot_for_current_block] = move(current_block);
+		}
+	}
+	current_block.clear();
+	num_files_in_block = 0;
+	++block_num;
+
+	if (block_num < blocks_to_keep) {
+		keep_current_block = true;
+		slot_for_current_block = -1;
+	} else {
+		// Keep every block with equal probability (reservoir sampling).
+		uint64_t idx = uniform_int_distribution<uint64_t>(0, block_num)(reservoir_rand);
+		keep_current_block = (idx < blocks_to_keep);
+		slot_for_current_block = idx;
+	}
+}
+
+string DictionaryBuilder::train(size_t buf_size)
+{
+	string dictionary_buf;
+	sort(sampled_blocks.begin(), sampled_blocks.end());  // Seemingly important for decompression speed.
+	for (const string &block : sampled_blocks) {
+		dictionary_buf += block;
+	}
+
+	string buf;
+	buf.resize(buf_size);
+	size_t ret = ZDICT_trainFromBuffer(&buf[0], buf_size, dictionary_buf.data(), lengths.data(), lengths.size());
+	dprintf(stderr, "Sampled %zu bytes in %zu blocks, built a dictionary of size %zu\n", dictionary_buf.size(), lengths.size(), ret);
+	buf.resize(ret);
+
+	sampled_blocks.clear();
+	lengths.clear();
+
+	return buf;
+}
+
+class Corpus : public DatabaseReceiver {
+public:
+	Corpus(FILE *outfp, size_t block_size, ZSTD_CDict *cdict)
+		: invindex(new PostingListBuilder *[NUM_TRIGRAMS]), outfp(outfp), block_size(block_size), cdict(cdict)
 	{
 		fill(invindex.get(), invindex.get() + NUM_TRIGRAMS, nullptr);
 	}
-	~Corpus()
+	~Corpus() override
 	{
 		for (unsigned i = 0; i < NUM_TRIGRAMS; ++i) {
 			delete invindex[i];
 		}
 	}
 
-	void add_file(string filename);
-	void flush_block();
+	void add_file(string filename) override;
+	void flush_block() override;
 
 	vector<uint64_t> filename_blocks;
 	size_t num_files = 0, num_files_in_block = 0, num_blocks = 0;
@@ -178,6 +268,7 @@ private:
 	string current_block;
 	string tempbuf;
 	const size_t block_size;
+	ZSTD_CDict *cdict;
 };
 
 void Corpus::add_file(string filename)
@@ -215,7 +306,7 @@ void Corpus::flush_block()
 
 	// Compress and add the filename block.
 	filename_blocks.push_back(ftell(outfp));
-	string compressed = zstd_compress(current_block, &tempbuf);
+	string compressed = zstd_compress(current_block, cdict, &tempbuf);
 	if (fwrite(compressed.data(), compressed.size(), 1, outfp) != 1) {
 		perror("fwrite()");
 		exit(1);
@@ -242,7 +333,7 @@ string read_cstr(FILE *fp)
 	}
 }
 
-void handle_directory(FILE *fp, Corpus *corpus)
+void handle_directory(FILE *fp, DatabaseReceiver *receiver)
 {
 	db_directory dummy;
 	if (fread(&dummy, sizeof(dummy), 1, fp) != 1) {
@@ -262,17 +353,17 @@ void handle_directory(FILE *fp, Corpus *corpus)
 		int type = getc(fp);
 		if (type == DBE_NORMAL) {
 			string filename = read_cstr(fp);
-			corpus->add_file(dir_path + "/" + filename);
+			receiver->add_file(dir_path + "/" + filename);
 		} else if (type == DBE_DIRECTORY) {
 			string dirname = read_cstr(fp);
-			corpus->add_file(dir_path + "/" + dirname);
+			receiver->add_file(dir_path + "/" + dirname);
 		} else {
 			return;  // Probably end.
 		}
 	}
 }
 
-void read_mlocate(const char *filename, Corpus *corpus)
+void read_mlocate(const char *filename, DatabaseReceiver *receiver)
 {
 	FILE *fp = fopen(filename, "rb");
 	if (fp == nullptr) {
@@ -289,19 +380,28 @@ void read_mlocate(const char *filename, Corpus *corpus)
 	// TODO: Care about the base path.
 	string path = read_cstr(fp);
 	while (!feof(fp)) {
-		handle_directory(fp, corpus);
+		handle_directory(fp, receiver);
 	}
 	fclose(fp);
 }
 
-string zstd_compress(const string &src, string *tempbuf)
+string zstd_compress(const string &src, ZSTD_CDict *cdict, string *tempbuf)
 {
+	static ZSTD_CCtx *ctx = nullptr;
+	if (ctx == nullptr) {
+		ctx = ZSTD_createCCtx();
+	}
+
 	size_t max_size = ZSTD_compressBound(src.size());
 	if (tempbuf->size() < max_size) {
 		tempbuf->resize(max_size);
 	}
-	static ZSTD_CCtx *ctx = ZSTD_createCCtx();  // Reused across calls.
-	size_t size = ZSTD_compressCCtx(ctx, &(*tempbuf)[0], max_size, src.data(), src.size(), /*level=*/6);
+	size_t size;
+	if (cdict == nullptr) {
+		size = ZSTD_compressCCtx(ctx, &(*tempbuf)[0], max_size, src.data(), src.size(), /*level=*/6);
+	} else {
+		size = ZSTD_compress_usingCDict(ctx, &(*tempbuf)[0], max_size, src.data(), src.size(), cdict);
+	}
 	return string(tempbuf->data(), size);
 }
 
@@ -377,11 +477,25 @@ void do_build(const char *infile, const char *outfile, int block_size)
 	hdr.extra_ht_slots = num_overflow_slots;
 	hdr.num_docids = 0;
 	hdr.hash_table_offset_bytes = -1;  // We don't know these offsets yet.
+	hdr.max_version = 1;
 	hdr.filename_index_offset_bytes = -1;
+	hdr.zstd_dictionary_length_bytes = -1;
 	fwrite(&hdr, sizeof(hdr), 1, outfp);
 
-	Corpus corpus(outfp, block_size);
+	// Train the dictionary by sampling real blocks.
+	// The documentation for ZDICT_trainFromBuffer() claims that a reasonable
+	// dictionary size is ~100 kB, but 1 kB seems to actually compress better for us,
+	// and decompress just as fast.
+	DictionaryBuilder builder(/*blocks_to_keep=*/1000, block_size);
+	read_mlocate(infile, &builder);
+	string dictionary = builder.train(1024);
+	ZSTD_CDict *cdict = ZSTD_createCDict(dictionary.data(), dictionary.size(), /*level=*/6);
 
+	hdr.zstd_dictionary_offset_bytes = ftell(outfp);
+	fwrite(dictionary.data(), dictionary.size(), 1, outfp);
+	hdr.zstd_dictionary_length_bytes = dictionary.size();
+
+	Corpus corpus(outfp, block_size, cdict);
 	read_mlocate(infile, &corpus);
 	if (false) {  // To read a plain text file.
 		FILE *fp = fopen(infile, "r");
@@ -480,7 +594,7 @@ void do_build(const char *infile, const char *outfile, int block_size)
 	}
 
 	// Rewind, and write the updated header.
-	hdr.version = 0;
+	hdr.version = 1;
 	fseek(outfp, 0, SEEK_SET);
 	fwrite(&hdr, sizeof(hdr), 1, outfp);
 	fclose(outfp);
@@ -488,6 +602,7 @@ void do_build(const char *infile, const char *outfile, int block_size)
 	size_t total_bytes __attribute__((unused)) = (bytes_for_hashtable + bytes_for_posting_lists + bytes_for_filename_index + bytes_for_filenames);
 
 	dprintf("Block size:     %7d files\n", block_size);
+	dprintf("Dictionary:     %'7.1f MB\n", dictionary.size() / 1048576.0);
 	dprintf("Hash table:     %'7.1f MB\n", bytes_for_hashtable / 1048576.0);
 	dprintf("Posting lists:  %'7.1f MB\n", bytes_for_posting_lists / 1048576.0);
 	dprintf("Filename index: %'7.1f MB\n", bytes_for_filename_index / 1048576.0);
