@@ -658,7 +658,7 @@ int main(int argc, char **argv)
 		case 'h':
 			usage();
 			exit(0);
-		case 'v':
+		case 'V':
 			version();
 			exit(0);
 		default:
