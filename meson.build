@@ -21,14 +21,18 @@ executable('plocate-build', 'plocate-build.cpp',
 	install_dir: get_option('sbindir'))
 
 conf_data = configuration_data()
+conf_data.set('PROCESSED_BY_MESON', '1')
 conf_data.set('sbindir', get_option('prefix') + '/' + get_option('sbindir'))
+conf_data.set('locategroup', get_option('locategroup'))
 update_script = configure_file(input: 'update-plocate.sh',
                output: 'update-plocate.sh',
                configuration: conf_data)
 
-install_data(update_script,
-	install_dir: '/etc/cron.daily',
-	rename: 'plocate')
+if get_option('install_cron')
+	install_data(update_script,
+		install_dir: '/etc/cron.daily',
+		rename: 'plocate')
+endif
 install_man('plocate.1')
 install_man('plocate-build.8')
 
