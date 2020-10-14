@@ -8,6 +8,10 @@
 #if defined(__i386__) || defined(__x86_64__)
 #define COULD_HAVE_SSE2
 #include <immintrin.h>
+#define TARGET_DEFAULT __attribute__((target("default")))
+#else
+// Function multiversioning is x86-only.
+#define TARGET_DEFAULT
 #endif
 
 #include "turbopfor-common.h"
@@ -17,13 +21,13 @@
 
 // Forward declarations to declare to the template code below that they exist.
 // (These must seemingly be non-templates for function multiversioning to work.)
-__attribute__((target("default")))
+TARGET_DEFAULT
 const unsigned char *
 decode_for_interleaved_128_32(const unsigned char *in, uint32_t *out);
-__attribute__((target("default")))
+TARGET_DEFAULT
 const unsigned char *
 decode_pfor_bitmap_interleaved_128_32(const unsigned char *in, uint32_t *out);
-__attribute__((target("default")))
+TARGET_DEFAULT
 const unsigned char *
 decode_pfor_vb_interleaved_128_32(const unsigned char *in, uint32_t *out);
 
@@ -417,7 +421,7 @@ const unsigned char *decode_for_interleaved(const unsigned char *in, Docid *out)
 }
 
 // Does not read past the end of the input.
-__attribute__((target("default")))
+TARGET_DEFAULT
 const unsigned char *
 decode_for_interleaved_128_32(const unsigned char *in, uint32_t *out)
 {
@@ -539,7 +543,7 @@ const unsigned char *decode_pfor_bitmap_interleaved(const unsigned char *in, Doc
 	}
 }
 
-__attribute__((target("default")))
+TARGET_DEFAULT
 const unsigned char *
 decode_pfor_bitmap_interleaved_128_32(const unsigned char *in, uint32_t *out)
 {
@@ -689,13 +693,14 @@ const unsigned char *decode_pfor_vb_interleaved(const unsigned char *in, Docid *
 	}
 }
 
-__attribute__((target("default")))
+TARGET_DEFAULT
 const unsigned char *
 decode_pfor_vb_interleaved_128_32(const unsigned char *in, uint32_t *out)
 {
 	return decode_pfor_vb_interleaved_generic<128>(in, out);
 }
 
+#ifdef COULD_HAVE_SSE2
 // Specialized version for SSE2.
 // Can read 16 bytes past the end of the input (inherit from decode_bitmap_sse2()).
 __attribute__((target("sse2")))
@@ -735,6 +740,7 @@ decode_pfor_vb_interleaved_128_32(const unsigned char *in, uint32_t *out)
 
 	return in;
 }
+#endif
 
 // Can read 16 bytes past the end of the input (inherit from several functions).
 template<unsigned BlockSize, class Docid>
