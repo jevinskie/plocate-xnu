@@ -375,11 +375,10 @@ void handle_directory(FILE *fp, DatabaseReceiver *receiver)
 	}
 }
 
-void read_mlocate(const char *filename, DatabaseReceiver *receiver)
+void read_mlocate(FILE *fp, DatabaseReceiver *receiver)
 {
-	FILE *fp = fopen(filename, "rb");
-	if (fp == nullptr) {
-		perror(filename);
+	if (fseek(fp, 0, SEEK_SET) != 0) {
+		perror("fseek");
 		exit(1);
 	}
 
@@ -394,7 +393,6 @@ void read_mlocate(const char *filename, DatabaseReceiver *receiver)
 	while (!feof(fp)) {
 		handle_directory(fp, receiver);
 	}
-	fclose(fp);
 }
 
 string zstd_compress(const string &src, ZSTD_CDict *cdict, string *tempbuf)
@@ -478,6 +476,12 @@ void do_build(const char *infile, const char *outfile, int block_size)
 {
 	steady_clock::time_point start __attribute__((unused)) = steady_clock::now();
 
+	FILE *infp = fopen(infile, "rb");
+	if (infp == nullptr) {
+		perror(infile);
+		exit(1);
+	}
+
 	umask(0027);
 	FILE *outfp = fopen(outfile, "wb");
 	if (outfp == nullptr) {
@@ -503,7 +507,7 @@ void do_build(const char *infile, const char *outfile, int block_size)
 	// dictionary size is ~100 kB, but 1 kB seems to actually compress better for us,
 	// and decompress just as fast.
 	DictionaryBuilder builder(/*blocks_to_keep=*/1000, block_size);
-	read_mlocate(infile, &builder);
+	read_mlocate(infp, &builder);
 	string dictionary = builder.train(1024);
 	ZSTD_CDict *cdict = ZSTD_createCDict(dictionary.data(), dictionary.size(), /*level=*/6);
 
@@ -512,7 +516,9 @@ void do_build(const char *infile, const char *outfile, int block_size)
 	hdr.zstd_dictionary_length_bytes = dictionary.size();
 
 	Corpus corpus(outfp, block_size, cdict);
-	read_mlocate(infile, &corpus);
+	read_mlocate(infp, &corpus);
+	fclose(infp);
+
 	if (false) {  // To read a plain text file.
 		FILE *fp = fopen(infile, "r");
 		while (!feof(fp)) {
