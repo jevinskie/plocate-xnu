@@ -246,7 +246,7 @@ Corpus::Corpus(int fd, IOUringEngine *engine)
 	: fd(fd), engine(engine)
 {
 	// Enable to test cold-cache behavior (except for access()).
-	if (true) {
+	if (false) {
 		off_t len = lseek(fd, 0, SEEK_END);
 		if (len == -1) {
 			perror("lseek");
