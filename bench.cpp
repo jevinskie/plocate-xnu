@@ -3,6 +3,7 @@
 #include <memory>
 #include <stdio.h>
 #include <unistd.h>
+#include <string>
 
 #define dprintf(...)
 //#define dprintf(...) fprintf(stderr, __VA_ARGS__);
@@ -15,6 +16,8 @@
 
 using namespace std;
 using namespace std::chrono;
+
+bool use_debug = false;
 
 int main(void)
 {
@@ -61,7 +64,7 @@ int main(void)
 		out2.resize(num_docids + 128);
 		unsigned char *pldata = reinterpret_cast<unsigned char *>(&pl[0]);
 		p4nd1dec128v32(pldata, num_docids, &out1[0]);
-		decode_pfor_delta1<128>(pldata, num_docids, /*interleaved=*/true, &out2[0]);
+		decode_pfor_delta1_128(pldata, num_docids, /*interleaved=*/true, &out2[0]);
 		for (unsigned i = 0; i < num_docids; ++i) {
 			if (out1[i] != out2[i]) {
 				if (++num_decode_errors < 10) {
@@ -122,7 +125,7 @@ int main(void)
 	start = steady_clock::now();
 	for (auto &[pl, num_docids] : posting_lists) {
 		unsigned char *pldata = reinterpret_cast<unsigned char *>(&pl[0]);
-		decode_pfor_delta1<128>(pldata, num_docids, /*interleaved=*/true, &dummy[0]);
+		decode_pfor_delta1_128(pldata, num_docids, /*interleaved=*/true, &dummy[0]);
 	}
 	end = steady_clock::now();
 	double own_sec = duration<double>(end - start).count();
