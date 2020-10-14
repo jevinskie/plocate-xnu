@@ -480,6 +480,10 @@ void do_build(const char *infile, const char *outfile, int block_size)
 
 	umask(0027);
 	FILE *outfp = fopen(outfile, "wb");
+	if (outfp == nullptr) {
+		perror(outfile);
+		exit(1);
+	}
 
 	// Write the header.
 	Header hdr;
