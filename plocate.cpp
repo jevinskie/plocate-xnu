@@ -432,7 +432,11 @@ public:
 	void print(uint64_t seq, uint64_t skip, const string msg) override
 	{
 		lock_guard<mutex> lock(wt->result_mu);
-		wt->results.emplace_back(WorkerThread::Result{ seq, skip, move(msg) });
+		if (msg.empty() && !wt->results.empty() && wt->results.back().seq + wt->results.back().skip == seq) {
+			wt->results.back().skip += skip;
+		} else {
+			wt->results.emplace_back(WorkerThread::Result{ seq, skip, move(msg) });
+		}
 	}
 
 private:
