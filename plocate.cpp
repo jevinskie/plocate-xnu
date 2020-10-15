@@ -6,8 +6,10 @@
 #include "unique_sort.h"
 
 #include <algorithm>
+#include <atomic>
 #include <assert.h>
 #include <chrono>
+#include <condition_variable>
 #include <fcntl.h>
 #include <fnmatch.h>
 #include <functional>
@@ -18,6 +20,7 @@
 #include <limits>
 #include <map>
 #include <memory>
+#include <mutex>
 #include <queue>
 #include <regex.h>
 #include <stdint.h>
@@ -26,6 +29,7 @@
 #include <string.h>
 #include <string>
 #include <string_view>
+#include <thread>
 #include <unistd.h>
 #include <unordered_map>
 #include <unordered_set>
@@ -51,6 +55,8 @@ int64_t limit_left = numeric_limits<int64_t>::max();
 steady_clock::time_point start;
 ZSTD_DDict *ddict = nullptr;
 
+regex_t compile_regex(const string &needle);
+
 void apply_limit()
 {
 	if (--limit_left > 0) {
@@ -64,10 +70,16 @@ void apply_limit()
 	exit(0);
 }
 
-class Serializer {
+class ResultReceiver {
+public:
+	virtual ~ResultReceiver() = default;
+	virtual void print(uint64_t seq, uint64_t skip, const string msg) = 0;
+};
+
+class Serializer : public ResultReceiver {
 public:
 	~Serializer() { assert(limit_left <= 0 || pending.empty()); }
-	void print(uint64_t seq, uint64_t skip, const string msg);
+	void print(uint64_t seq, uint64_t skip, const string msg) override;
 
 private:
 	uint64_t next_seq = 0;
@@ -157,10 +169,12 @@ private:
 	};
 	map<string, vector<PendingStat>> pending_stats;
 	IOUringEngine *engine;
+	mutex mu;
 };
 
 void AccessRXCache::check_access(const char *filename, bool allow_async, function<void(bool)> cb)
 {
+	lock_guard<mutex> lock(mu);
 	if (engine == nullptr || !engine->get_supports_stat()) {
 		allow_async = false;
 	}
@@ -311,8 +325,8 @@ size_t Corpus::get_num_filename_blocks() const
 }
 
 void scan_file_block(const vector<Needle> &needles, string_view compressed,
-                     AccessRXCache *access_rx_cache, uint64_t seq, Serializer *serializer,
-                     uint64_t *matched)
+                     AccessRXCache *access_rx_cache, uint64_t seq, ResultReceiver *serializer,
+                     atomic<uint64_t> *matched)
 {
 	unsigned long long uncompressed_len = ZSTD_getFrameContentSize(compressed.data(), compressed.size());
 	if (uncompressed_len == ZSTD_CONTENTSIZE_UNKNOWN || uncompressed_len == ZSTD_CONTENTSIZE_ERROR) {
@@ -323,7 +337,7 @@ void scan_file_block(const vector<Needle> &needles, string_view compressed,
 	string block;
 	block.resize(uncompressed_len + 1);
 
-	static ZSTD_DCtx *ctx = ZSTD_createDCtx();  // Reused across calls.
+	static thread_local ZSTD_DCtx *ctx = ZSTD_createDCtx();  // Reused across calls.
 	size_t err;
 
 	if (ddict != nullptr) {
@@ -385,7 +399,7 @@ size_t scan_docids(const vector<Needle> &needles, const vector<uint32_t> &docids
 {
 	Serializer docids_in_order;
 	AccessRXCache access_rx_cache(engine);
-	uint64_t matched = 0;
+	atomic<uint64_t> matched{0};
 	for (size_t i = 0; i < docids.size(); ++i) {
 		uint32_t docid = docids[i];
 		corpus.get_compressed_filename_block(docid, [i, &matched, &needles, &access_rx_cache, &docids_in_order](string_view compressed) {
@@ -396,9 +410,48 @@ size_t scan_docids(const vector<Needle> &needles, const vector<uint32_t> &docids
 	return matched;
 }
 
+struct WorkerThread {
+	thread t;
+
+	// We use a result queue instead of synchronizing Serializer,
+	// since a lock on it becomes a huge choke point if there are
+	// lots of threads.
+	mutex result_mu;
+	vector<tuple<uint64_t, uint64_t, string>> results;
+};
+
+class WorkerThreadReceiver : public ResultReceiver {
+public:
+	WorkerThreadReceiver(WorkerThread *wt) : wt(wt) {}
+
+	void print(uint64_t seq, uint64_t skip, const string msg) override
+	{
+		lock_guard<mutex> lock(wt->result_mu);
+		wt->results.emplace_back(seq, skip, move(msg));
+	}
+
+private:
+	WorkerThread *wt;
+};
+
+void deliver_results(WorkerThread *wt, Serializer *serializer)
+{
+	vector<tuple<uint64_t, uint64_t, string>> results;
+	{
+		lock_guard<mutex> lock(wt->result_mu);
+		results = move(wt->results);
+	}
+	for (const auto &result : results) {
+		serializer->print(get<0>(result), get<1>(result), move(get<2>(result)));
+	}
+}
+
 // We do this sequentially, as it's faster than scattering
 // a lot of I/O through io_uring and hoping the kernel will
-// coalesce it plus readahead for us.
+// coalesce it plus readahead for us. Since we assume that
+// we will primarily be CPU-bound, we'll be firing up one
+// worker thread for each spare core (the last one will
+// only be doing I/O). access() is still synchronous.
 uint64_t scan_all_docids(const vector<Needle> &needles, int fd, const Corpus &corpus)
 {
 	{
@@ -412,12 +465,59 @@ uint64_t scan_all_docids(const vector<Needle> &needles, int fd, const Corpus &co
 	}
 
 	AccessRXCache access_rx_cache(nullptr);
-	Serializer serializer;  // Mostly dummy; handles only the limit.
+	Serializer serializer;
 	uint32_t num_blocks = corpus.get_num_filename_blocks();
 	unique_ptr<uint64_t[]> offsets(new uint64_t[num_blocks + 1]);
 	complete_pread(fd, offsets.get(), (num_blocks + 1) * sizeof(uint64_t), corpus.offset_for_block(0));
+	atomic<uint64_t> matched{0};
+
+	mutex mu;
+	condition_variable queue_added, queue_removed;
+	deque<tuple<int, int, string>> work_queue;  // Under mu.
+	bool done = false;  // Under mu.
+
+	unsigned num_threads = max<int>(sysconf(_SC_NPROCESSORS_ONLN) - 1, 1);
+	dprintf("Using %u worker threads for linear scan.\n", num_threads);
+	unique_ptr<WorkerThread[]> threads(new WorkerThread[num_threads]);
+	for (unsigned i = 0; i < num_threads; ++i) {
+		threads[i].t = thread([&threads, &mu, &queue_added, &queue_removed, &work_queue, &done, &offsets, &needles, &access_rx_cache, &matched, i] {
+			// regcomp() takes a lock on the regex, so each thread will need its own.
+			const vector<Needle> *use_needles = &needles;
+			vector<Needle> recompiled_needles;
+			if (i != 0 && patterns_are_regex) {
+				recompiled_needles = needles;
+				for (Needle &needle : recompiled_needles) {
+					needle.re = compile_regex(needle.str);
+				}
+				use_needles = &recompiled_needles;
+			}
+
+			WorkerThreadReceiver receiver(&threads[i]);
+			for (;;) {
+				uint32_t io_docid, last_docid;
+				string compressed;
+
+				{
+					unique_lock<mutex> lock(mu);
+					queue_added.wait(lock, [&work_queue, &done] { return !work_queue.empty() || done; });
+					if (done && work_queue.empty()) {
+						return;
+					}
+					tie(io_docid, last_docid, compressed) = move(work_queue.front());
+					work_queue.pop_front();
+					queue_removed.notify_all();
+				}
+
+				for (uint32_t docid = io_docid; docid < last_docid; ++docid) {
+					size_t relative_offset = offsets[docid] - offsets[io_docid];
+					size_t len = offsets[docid + 1] - offsets[docid];
+					scan_file_block(*use_needles, { &compressed[relative_offset], len }, &access_rx_cache, docid, &receiver, &matched);
+				}
+			}
+		});
+	}
+
 	string compressed;
-	uint64_t matched = 0;
 	for (uint32_t io_docid = 0; io_docid < num_blocks; io_docid += 32) {
 		uint32_t last_docid = std::min(io_docid + 32, num_blocks);
 		size_t io_len = offsets[last_docid] - offsets[io_docid];
@@ -426,11 +526,27 @@ uint64_t scan_all_docids(const vector<Needle> &needles, int fd, const Corpus &co
 		}
 		complete_pread(fd, &compressed[0], io_len, offsets[io_docid]);
 
-		for (uint32_t docid = io_docid; docid < last_docid; ++docid) {
-			size_t relative_offset = offsets[docid] - offsets[io_docid];
-			size_t len = offsets[docid + 1] - offsets[docid];
-			scan_file_block(needles, { &compressed[relative_offset], len }, &access_rx_cache, docid, &serializer, &matched);
+		{
+			unique_lock<mutex> lock(mu);
+			queue_removed.wait(lock, [&work_queue] { return work_queue.size() < 256; });  // Allow ~2MB of data queued up.
+			work_queue.emplace_back(io_docid, last_docid, move(compressed));
+			queue_added.notify_one();  // Avoid the thundering herd.
 		}
+
+		// Pick up some results, so that we are sure that we won't just overload.
+		// (Seemingly, going through all of these causes slowness with many threads,
+		// but taking only one is OK.)
+		unsigned i = io_docid / 32;
+		deliver_results(&threads[i % num_threads], &serializer);
+	}
+	{
+		lock_guard<mutex> lock(mu);
+		done = true;
+		queue_added.notify_all();
+	}
+	for (unsigned i = 0; i < num_threads; ++i) {
+		threads[i].t.join();
+		deliver_results(&threads[i], &serializer);
 	}
 	return matched;
 }
