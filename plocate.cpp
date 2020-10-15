@@ -417,7 +417,12 @@ struct WorkerThread {
 	// since a lock on it becomes a huge choke point if there are
 	// lots of threads.
 	mutex result_mu;
-	vector<tuple<uint64_t, uint64_t, string>> results;
+	struct Result {
+		uint64_t seq;
+		uint64_t skip;
+		string msg;
+	};
+	vector<Result> results;
 };
 
 class WorkerThreadReceiver : public ResultReceiver {
@@ -427,7 +432,7 @@ public:
 	void print(uint64_t seq, uint64_t skip, const string msg) override
 	{
 		lock_guard<mutex> lock(wt->result_mu);
-		wt->results.emplace_back(seq, skip, move(msg));
+		wt->results.emplace_back(WorkerThread::Result{ seq, skip, move(msg) });
 	}
 
 private:
@@ -436,13 +441,13 @@ private:
 
 void deliver_results(WorkerThread *wt, Serializer *serializer)
 {
-	vector<tuple<uint64_t, uint64_t, string>> results;
+	vector<WorkerThread::Result> results;
 	{
 		lock_guard<mutex> lock(wt->result_mu);
 		results = move(wt->results);
 	}
-	for (const auto &result : results) {
-		serializer->print(get<0>(result), get<1>(result), move(get<2>(result)));
+	for (const WorkerThread::Result &result : results) {
+		serializer->print(result.seq, result.skip, move(result.msg));
 	}
 }
 
