@@ -24,9 +24,9 @@
 #include <memory>
 #include <mutex>
 #include <regex.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <stdint.h>
 #include <string.h>
 #include <string>
 #include <string_view>
@@ -404,7 +404,7 @@ uint64_t scan_all_docids(const vector<Needle> &needles, int fd, const Corpus &co
 	uint32_t num_blocks = corpus.get_num_filename_blocks();
 	unique_ptr<uint64_t[]> offsets(new uint64_t[num_blocks + 1]);
 	complete_pread(fd, offsets.get(), (num_blocks + 1) * sizeof(uint64_t), corpus.offset_for_block(0));
-	atomic<uint64_t> matched{0};
+	atomic<uint64_t> matched{ 0 };
 
 	mutex mu;
 	condition_variable queue_added, queue_removed;

@@ -1,12 +1,12 @@
 #ifndef _SERIALIZER_H
 #define _SERIALIZER_H 1
 
+#include "options.h"
+
 #include <assert.h>
 #include <bits/stdint-uintn.h>
 #include <queue>
 #include <string>
-
-#include "options.h"
 
 class ResultReceiver {
 public:

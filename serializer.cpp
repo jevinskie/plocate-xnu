@@ -1,12 +1,13 @@
-#include <inttypes.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <chrono>
-#include <memory>
-#include <utility>
+#include "serializer.h"
 
 #include "dprintf.h"
-#include "serializer.h"
+
+#include <chrono>
+#include <inttypes.h>
+#include <memory>
+#include <stdio.h>
+#include <stdlib.h>
+#include <utility>
 
 using namespace std;
 using namespace std::chrono;
@@ -64,4 +65,3 @@ void Serializer::print(uint64_t seq, uint64_t skip, const string msg)
 		pending.pop();
 	}
 }
-
