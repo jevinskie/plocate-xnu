@@ -49,6 +49,7 @@ bool ignore_case = false;
 bool only_count = false;
 bool print_nul = false;
 bool use_debug = false;
+bool flush_cache = false;
 bool patterns_are_regex = false;
 bool use_extended_regex = false;
 int64_t limit_matches = numeric_limits<int64_t>::max();
@@ -80,8 +81,7 @@ public:
 Corpus::Corpus(int fd, IOUringEngine *engine)
 	: fd(fd), engine(engine)
 {
-	// Enable to test cold-cache behavior (except for access()).
-	if (false) {
+	if (flush_cache) {
 		off_t len = lseek(fd, 0, SEEK_END);
 		if (len == -1) {
 			perror("lseek");
@@ -663,6 +663,7 @@ void version()
 int main(int argc, char **argv)
 {
 	constexpr int EXTENDED_REGEX = 1000;
+	constexpr int FLUSH_CACHE = 1001;
 	static const struct option long_options[] = {
 		{ "help", no_argument, 0, 'h' },
 		{ "count", no_argument, 0, 'c' },
@@ -674,6 +675,8 @@ int main(int argc, char **argv)
 		{ "regexp", no_argument, 0, 'r' },
 		{ "regex", no_argument, 0, EXTENDED_REGEX },
 		{ "debug", no_argument, 0, 'D' },  // Not documented.
+		// Enable to test cold-cache behavior (except for access()). Not documented.
+		{ "flush-cache", no_argument, 0, FLUSH_CACHE },
 		{ 0, 0, 0, 0 }
 	};
 
@@ -718,6 +721,9 @@ int main(int argc, char **argv)
 		case 'D':
 			use_debug = true;
 			break;
+		case FLUSH_CACHE:
+			flush_cache = true;
+			break;
 		case 'V':
 			version();
 			break;
@@ -726,10 +732,12 @@ int main(int argc, char **argv)
 		}
 	}
 
-	if (use_debug) {
+	if (use_debug || flush_cache) {
 		// Debug information would leak information about which files exist,
 		// so drop setgid before we open the file; one would either need to run
-		// as root, or use a locally-built file.
+		// as root, or use a locally-built file. Doing the same thing for
+		// flush_cache is mostly paranoia, in an attempt to prevent random users
+		// from making plocate slow for everyone else.
 		if (setgid(getgid()) != 0) {
 			perror("setgid");
 			exit(EXIT_FAILURE);

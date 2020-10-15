@@ -8,6 +8,7 @@ extern bool ignore_case;
 extern bool only_count;
 extern bool print_nul;
 extern bool use_debug;
+extern bool flush_cache;
 extern bool patterns_are_regex;
 extern bool use_extended_regex;
 extern int64_t limit_matches;
