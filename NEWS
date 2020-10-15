@@ -1,3 +1,12 @@
+plocate 1.0.4, October 16th, 2020
+
+  - Fix a bug where plocate.db would be evicted from the OS cache
+    (the behavior was only meant for benchmarking).
+
+  - On fallback linear scans, such as regexes or very short patterns,
+    use multithreading to speed up the search.
+
+
 plocate 1.0.3, October 15th, 2020
 
   - Portability fixes; plocate will now compile and run on non-x86
