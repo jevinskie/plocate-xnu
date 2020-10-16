@@ -7,13 +7,14 @@ cxx = meson.get_compiler('cpp')
 uringdep = dependency('liburing', required: false)
 zstddep = dependency('libzstd')
 threaddep = dependency('threads')
+atomicdep = dependency('atomic', required: false)
 
 if not uringdep.found()
 	add_project_arguments('-DWITHOUT_URING', language: 'cpp')
 endif
 
 executable('plocate', ['plocate.cpp', 'io_uring_engine.cpp', 'turbopfor.cpp', 'parse_trigrams.cpp', 'serializer.cpp', 'access_rx_cache.cpp', 'needle.cpp'],
-	dependencies: [uringdep, zstddep, threaddep],
+	dependencies: [uringdep, zstddep, threaddep, atomicdep],
 	install: true,
 	install_mode: ['rwxr-sr-x', 'root', 'mlocate'])
 executable('plocate-build', 'plocate-build.cpp',
