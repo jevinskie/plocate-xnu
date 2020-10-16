@@ -4,7 +4,7 @@
 #include "options.h"
 
 #include <assert.h>
-#include <bits/stdint-uintn.h>
+#include <stdint.h>
 #include <queue>
 #include <string>
 
