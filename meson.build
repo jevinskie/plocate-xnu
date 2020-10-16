@@ -7,7 +7,7 @@ cxx = meson.get_compiler('cpp')
 uringdep = dependency('liburing', required: false)
 zstddep = dependency('libzstd')
 threaddep = dependency('threads')
-atomicdep = dependency('atomic', required: false)
+atomicdep = cxx.find_library('atomic', required: false)
 
 if not uringdep.found()
 	add_project_arguments('-DWITHOUT_URING', language: 'cpp')
