@@ -474,7 +474,7 @@ unique_ptr<Trigram[]> create_hashtable(Corpus &corpus, const vector<uint32_t> &a
 
 void do_build(const char *infile, const char *outfile, int block_size)
 {
-	steady_clock::time_point start __attribute__((unused)) = steady_clock::now();
+	steady_clock::time_point start = steady_clock::now();
 
 	FILE *infp = fopen(infile, "rb");
 	if (infp == nullptr) {
@@ -622,7 +622,7 @@ void do_build(const char *infile, const char *outfile, int block_size)
 	fwrite(&hdr, sizeof(hdr), 1, outfp);
 	fclose(outfp);
 
-	size_t total_bytes __attribute__((unused)) = (bytes_for_hashtable + bytes_for_posting_lists + bytes_for_filename_index + bytes_for_filenames);
+	size_t total_bytes = (bytes_for_hashtable + bytes_for_posting_lists + bytes_for_filename_index + bytes_for_filenames);
 
 	dprintf("Block size:     %7d files\n", block_size);
 	dprintf("Dictionary:     %'7.1f MB\n", dictionary.size() / 1048576.0);

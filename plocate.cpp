@@ -601,7 +601,7 @@ void do_search_file(const vector<Needle> &needles, const char *filename)
 				if (done)
 					return;
 
-				uint32_t trgm __attribute__((unused)) = trgmptr.trgm;
+				uint32_t trgm = trgmptr.trgm;
 				const unsigned char *pldata = reinterpret_cast<const unsigned char *>(s.data());
 				size_t num = trgmptr.num_docids;
 				decoded.resize(num);
