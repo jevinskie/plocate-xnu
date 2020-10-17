@@ -58,6 +58,13 @@ testing visibility as the calling user.
 
 .SH OPTIONS
 .TP
+\fB\-b\fR, \fB\-\-basename\fR
+Match only against the file name portion of the path name,
+ie., the directory names will be excluded from the match
+(but still printed). This does not speed up the search,
+but can suppress uninteresting matches.
+
+.TP
 \fB\-c\fR, \fB\-\-count\fR
 Do not print each match. Instead, count them, and print out a total
 number at the end.
@@ -109,6 +116,13 @@ Like \fB\-\-regexp\fR, but patterns are instead taken to
 be POSIX
 .I extended
 regular expressions.
+
+.TP
+\fB\-w\fR, \fB\-\-wholename\fR
+Match against the entire path name. This is the default,
+so unless \fB-b\fR is given first (see above), it will not do
+anything. This option thus exists only as compatibility with
+.BR mlocate (1).
 
 .TP
 .B \-\-help

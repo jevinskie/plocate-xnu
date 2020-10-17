@@ -52,6 +52,7 @@ bool use_debug = false;
 bool flush_cache = false;
 bool patterns_are_regex = false;
 bool use_extended_regex = false;
+bool match_basename = false;
 int64_t limit_matches = numeric_limits<int64_t>::max();
 int64_t limit_left = numeric_limits<int64_t>::max();
 
@@ -194,9 +195,19 @@ void scan_file_block(const vector<Needle> &needles, string_view compressed,
 	for (const char *filename = block.data();
 	     filename != block.data() + block.size();
 	     filename += strlen(filename) + 1) {
+		const char *haystack = filename;
+		if (match_basename) {
+			haystack = strrchr(filename, '/');
+			if (haystack == nullptr) {
+				haystack = filename;
+			} else {
+				++haystack;
+			}
+		}
+
 		bool found = true;
 		for (const Needle &needle : needles) {
-			if (!matches(needle, filename)) {
+			if (!matches(needle, haystack)) {
 				found = false;
 				break;
 			}
@@ -638,6 +649,7 @@ void usage()
 	printf(
 		"Usage: plocate [OPTION]... PATTERN...\n"
 		"\n"
+		"  -b, --basename         search only the file name portion of path names\n"
 		"  -c, --count            print number of matches instead of the matches\n"
 		"  -d, --database DBPATH  search for files in DBPATH\n"
 		"                         (default is " DEFAULT_DBPATH ")\n"
@@ -646,6 +658,7 @@ void usage()
 		"  -0, --null             delimit matches by NUL instead of newline\n"
 		"  -r, --regexp           interpret patterns as basic regexps (slow)\n"
 		"      --regex            interpret patterns as extended regexps (slow)\n"
+		"  -w, --wholename        search the entire path name (default; see -b)\n"
 		"      --help             print this help\n"
 		"      --version          print version information\n");
 }
@@ -667,6 +680,7 @@ int main(int argc, char **argv)
 	static const struct option long_options[] = {
 		{ "help", no_argument, 0, 'h' },
 		{ "count", no_argument, 0, 'c' },
+		{ "basename", no_argument, 0, 'b' },
 		{ "database", required_argument, 0, 'd' },
 		{ "ignore-case", no_argument, 0, 'i' },
 		{ "limit", required_argument, 0, 'l' },
@@ -674,6 +688,7 @@ int main(int argc, char **argv)
 		{ "version", no_argument, 0, 'V' },
 		{ "regexp", no_argument, 0, 'r' },
 		{ "regex", no_argument, 0, EXTENDED_REGEX },
+		{ "wholename", no_argument, 0, 'w' },
 		{ "debug", no_argument, 0, 'D' },  // Not documented.
 		// Enable to test cold-cache behavior (except for access()). Not documented.
 		{ "flush-cache", no_argument, 0, FLUSH_CACHE },
@@ -683,11 +698,14 @@ int main(int argc, char **argv)
 	setlocale(LC_ALL, "");
 	for (;;) {
 		int option_index = 0;
-		int c = getopt_long(argc, argv, "cd:hil:n:0VD", long_options, &option_index);
+		int c = getopt_long(argc, argv, "bcd:hil:n:0wVD", long_options, &option_index);
 		if (c == -1) {
 			break;
 		}
 		switch (c) {
+		case 'b':
+			match_basename = true;
+			break;
 		case 'c':
 			only_count = true;
 			break;
@@ -717,6 +735,9 @@ int main(int argc, char **argv)
 		case EXTENDED_REGEX:
 			patterns_are_regex = true;
 			use_extended_regex = true;
+			break;
+		case 'w':
+			match_basename = false;  // No-op unless -b is given first.
 			break;
 		case 'D':
 			use_debug = true;
