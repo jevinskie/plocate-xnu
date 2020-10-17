@@ -700,7 +700,7 @@ int main(int argc, char **argv)
 	setlocale(LC_ALL, "");
 	for (;;) {
 		int option_index = 0;
-		int c = getopt_long(argc, argv, "bcd:hil:n:0wVD", long_options, &option_index);
+		int c = getopt_long(argc, argv, "bcd:hil:n:0rwVD", long_options, &option_index);
 		if (c == -1) {
 			break;
 		}
