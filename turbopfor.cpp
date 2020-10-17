@@ -5,10 +5,23 @@
 #include <string.h>
 #include <strings.h>
 
+// This is a mess. :-/ Maybe it would be good just to drop support for
+// multiversioning; the only platform it really helps is 32-bit x86.
+// This may change if we decide to use AVX or similar in the future, though.
 #if defined(__i386__) || defined(__x86_64__)
+#ifdef __SSE2__
+#define COULD_HAVE_SSE2
+#define SUPPRESS_DEFAULT
+#include <immintrin.h>
+#define TARGET_SSE2
+#elif defined(HAS_FUNCTION_MULTIVERSIONING)
 #define COULD_HAVE_SSE2
 #include <immintrin.h>
+#define TARGET_SSE2 __attribute__((target("sse2")))
 #define TARGET_DEFAULT __attribute__((target("default")))
+#else
+#define TARGET_DEFAULT
+#endif
 #else
 // Function multiversioning is x86-only.
 #define TARGET_DEFAULT
@@ -19,6 +32,7 @@
 #define dprintf(...)
 //#define dprintf(...) fprintf(stderr, __VA_ARGS__);
 
+#ifndef SUPPRESS_DEFAULT
 // Forward declarations to declare to the template code below that they exist.
 // (These must seemingly be non-templates for function multiversioning to work.)
 TARGET_DEFAULT
@@ -30,15 +44,16 @@ decode_pfor_bitmap_interleaved_128_32(const unsigned char *in, uint32_t *out);
 TARGET_DEFAULT
 const unsigned char *
 decode_pfor_vb_interleaved_128_32(const unsigned char *in, uint32_t *out);
+#endif
 
 #ifdef COULD_HAVE_SSE2
-__attribute__((target("sse2")))
+TARGET_SSE2
 const unsigned char *
 decode_for_interleaved_128_32(const unsigned char *in, uint32_t *out);
-__attribute__((target("sse2")))
+TARGET_SSE2
 const unsigned char *
 decode_pfor_bitmap_interleaved_128_32(const unsigned char *in, uint32_t *out);
-__attribute__((target("sse2")))
+TARGET_SSE2
 const unsigned char *
 decode_pfor_vb_interleaved_128_32(const unsigned char *in, uint32_t *out);
 #endif
@@ -173,12 +188,12 @@ private:
 #ifdef COULD_HAVE_SSE2
 struct InterleavedBitReaderSSE2 {
 public:
-	__attribute__((target("sse2")))
+	TARGET_SSE2
 	InterleavedBitReaderSSE2(const unsigned char *in, unsigned bits)
 		: in(reinterpret_cast<const __m128i *>(in)), bits(bits), mask(_mm_set1_epi32(mask_for_bits(bits))) {}
 
 	// Can read 16 bytes past the end of the input (if bit_width == 0).
-	__attribute__((target("sse2")))
+	TARGET_SSE2
 	__m128i
 	read()
 	{
@@ -247,11 +262,11 @@ const unsigned char *decode_for(const unsigned char *in, unsigned num, Docid *ou
 #ifdef COULD_HAVE_SSE2
 class DeltaDecoderSSE2 {
 public:
-	__attribute__((target("sse2")))
+	TARGET_SSE2
 	DeltaDecoderSSE2(uint32_t prev_val)
 		: prev_val(_mm_set1_epi32(prev_val)) {}
 
-	__attribute__((target("sse2")))
+	TARGET_SSE2
 	__m128i
 	decode(__m128i val)
 	{
@@ -271,7 +286,7 @@ private:
 };
 
 template<unsigned BlockSize>
-__attribute__((target("sse2"))) inline void delta_decode_sse2(uint32_t *out)
+TARGET_SSE2 inline void delta_decode_sse2(uint32_t *out)
 {
 	DeltaDecoderSSE2 delta(out[-1]);
 	__m128i *outvec = reinterpret_cast<__m128i *>(out);
@@ -283,8 +298,7 @@ __attribute__((target("sse2"))) inline void delta_decode_sse2(uint32_t *out)
 
 // Can read 16 bytes past the end of its input (inherit from InterleavedBitReaderSSE2).
 template<unsigned BlockSize, bool OrWithExisting, bool DeltaDecode, unsigned bit_width>
-__attribute__((target("sse2")))
-const unsigned char *
+TARGET_SSE2 const unsigned char *
 decode_bitmap_sse2_unrolled(const unsigned char *in, uint32_t *out)
 {
 	__m128i *outvec = reinterpret_cast<__m128i *>(out);
@@ -307,8 +321,7 @@ decode_bitmap_sse2_unrolled(const unsigned char *in, uint32_t *out)
 
 // Can read 16 bytes past the end of its input (inherit from InterleavedBitReaderSSE2).
 template<unsigned BlockSize, bool OrWithExisting, bool DeltaDecode>
-__attribute__((target("sse2")))
-const unsigned char *
+TARGET_SSE2 const unsigned char *
 decode_bitmap_sse2(const unsigned char *in, unsigned bit_width, uint32_t *out)
 {
 	switch (bit_width) {
@@ -420,6 +433,7 @@ const unsigned char *decode_for_interleaved(const unsigned char *in, Docid *out)
 	}
 }
 
+#ifndef SUPPRESS_DEFAULT
 // Does not read past the end of the input.
 TARGET_DEFAULT
 const unsigned char *
@@ -427,11 +441,12 @@ decode_for_interleaved_128_32(const unsigned char *in, uint32_t *out)
 {
 	return decode_for_interleaved_generic<128>(in, out);
 }
+#endif
 
 #ifdef COULD_HAVE_SSE2
 // Specialized version for SSE2.
 // Can read 16 bytes past the end of the input (inherit from decode_bitmap_sse2()).
-__attribute__((target("sse2")))
+TARGET_SSE2
 const unsigned char *
 decode_for_interleaved_128_32(const unsigned char *in, uint32_t *out)
 {
@@ -543,19 +558,21 @@ const unsigned char *decode_pfor_bitmap_interleaved(const unsigned char *in, Doc
 	}
 }
 
+#ifndef SUPPRESS_DEFAULT
 TARGET_DEFAULT
 const unsigned char *
 decode_pfor_bitmap_interleaved_128_32(const unsigned char *in, uint32_t *out)
 {
 	return decode_pfor_bitmap_interleaved_generic<128>(in, out);
 }
+#endif
 
 #ifdef COULD_HAVE_SSE2
 // Specialized version for SSE2.
 //
 // Can read 16 bytes past the end of the input (inherit from InterleavedBitReaderSSE2
 // and decode_pfor_bitmap_exceptions()).
-__attribute__((target("sse2")))
+TARGET_SSE2
 const unsigned char *
 decode_pfor_bitmap_interleaved_128_32(const unsigned char *in, uint32_t *out)
 {
@@ -693,17 +710,19 @@ const unsigned char *decode_pfor_vb_interleaved(const unsigned char *in, Docid *
 	}
 }
 
+#ifndef SUPPRESS_DEFAULT
 TARGET_DEFAULT
 const unsigned char *
 decode_pfor_vb_interleaved_128_32(const unsigned char *in, uint32_t *out)
 {
 	return decode_pfor_vb_interleaved_generic<128>(in, out);
 }
+#endif
 
 #ifdef COULD_HAVE_SSE2
 // Specialized version for SSE2.
 // Can read 16 bytes past the end of the input (inherit from decode_bitmap_sse2()).
-__attribute__((target("sse2")))
+TARGET_SSE2
 const unsigned char *
 decode_pfor_vb_interleaved_128_32(const unsigned char *in, uint32_t *out)
 {

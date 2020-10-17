@@ -13,6 +13,13 @@ if not uringdep.found()
 	add_project_arguments('-DWITHOUT_URING', language: 'cpp')
 endif
 
+# Function multiversioning is x86-only _and_ not available on certain targets
+# (they need “ifunc”, indirect functions, a GNU extension).
+code = '__attribute__((target("default"))) void func();'
+if cxx.compiles(code, name: 'function multiversioning')
+	add_project_arguments('-DHAS_FUNCTION_MULTIVERSIONING', language: 'cpp')
+endif
+
 executable('plocate', ['plocate.cpp', 'io_uring_engine.cpp', 'turbopfor.cpp', 'parse_trigrams.cpp', 'serializer.cpp', 'access_rx_cache.cpp', 'needle.cpp'],
 	dependencies: [uringdep, zstddep, threaddep, atomicdep],
 	install: true,
