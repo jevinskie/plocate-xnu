@@ -15,7 +15,9 @@ endif
 
 # Function multiversioning is x86-only _and_ not available on certain targets
 # (they need “ifunc”, indirect functions, a GNU extension).
-code = '__attribute__((target("default"))) void func();'
+code = '''__attribute__((target("default"))) void foo();
+__attribute__((target("sse2"))) void foo();
+void bar() { foo(); }'''
 if cxx.compiles(code, name: 'function multiversioning')
 	add_project_arguments('-DHAS_FUNCTION_MULTIVERSIONING', language: 'cpp')
 endif
