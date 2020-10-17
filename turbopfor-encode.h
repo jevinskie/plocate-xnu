@@ -94,11 +94,20 @@ unsigned char *write_vb(Docid val, unsigned char *out)
 template<class Docid>
 inline unsigned num_bits(Docid x)
 {
+#ifdef __GNUC__
 	if (x == 0) {
 		return 0;
 	} else {
 		return sizeof(Docid) * CHAR_BIT - __builtin_clz(x);
 	}
+#else
+	for (int i = sizeof(Docid) * CHAR_BIT; i-- > 0; ) {
+		if (x & (Docid{1} << i)) {
+			return i;
+		}
+	}
+	return 0;
+#endif
 }
 
 struct BitWriter {
