@@ -4,8 +4,8 @@
 #include "options.h"
 
 #include <assert.h>
-#include <stdint.h>
 #include <queue>
+#include <stdint.h>
 #include <string>
 
 class ResultReceiver {

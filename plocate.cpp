@@ -501,7 +501,7 @@ void do_search_file(const vector<Needle> &needles, const char *filename)
 		// work for fairly unclear gain.)
 		uint64_t matched = scan_all_docids(needles, fd, corpus);
 		dprintf("Done in %.1f ms, found %" PRId64 " matches.\n",
-			1e3 * duration<float>(steady_clock::now() - start).count(), matched);
+		        1e3 * duration<float>(steady_clock::now() - start).count(), matched);
 		if (only_count) {
 			printf("%" PRId64 "\n", matched);
 		}
