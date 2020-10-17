@@ -1,3 +1,10 @@
+plocate 1.0.5, October 17th, 2020
+
+  - Implement the -b/--basename option.
+
+  - Various bugfixes.
+
+
 plocate 1.0.4, October 16th, 2020
 
   - Fix a bug where plocate.db would be evicted from the OS cache
