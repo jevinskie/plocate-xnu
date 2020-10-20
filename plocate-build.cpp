@@ -375,6 +375,33 @@ void handle_directory(FILE *fp, DatabaseReceiver *receiver)
 	}
 }
 
+void read_plaintext(FILE *fp, DatabaseReceiver *receiver)
+{
+	if (fseek(fp, 0, SEEK_SET) != 0) {
+		perror("fseek");
+		exit(1);
+	}
+
+	while (!feof(fp)) {
+		char buf[1024];
+		if (fgets(buf, sizeof(buf), fp) == nullptr) {
+			break;
+		}
+		string s(buf);
+		assert(!s.empty());
+		while (s.back() != '\n' && !feof(fp)) {
+			// The string was longer than the buffer, so read again.
+			if (fgets(buf, sizeof(buf), fp) == nullptr) {
+				break;
+			}
+			s += buf;
+		}
+		if (!s.empty() && s.back() == '\n')
+			s.pop_back();
+		receiver->add_file(move(s));
+	}
+}
+
 void read_mlocate(FILE *fp, DatabaseReceiver *receiver)
 {
 	if (fseek(fp, 0, SEEK_SET) != 0) {
@@ -472,7 +499,7 @@ unique_ptr<Trigram[]> create_hashtable(Corpus &corpus, const vector<uint32_t> &a
 	return ht;
 }
 
-void do_build(const char *infile, const char *outfile, int block_size)
+void do_build(const char *infile, const char *outfile, int block_size, bool plaintext)
 {
 	steady_clock::time_point start = steady_clock::now();
 
@@ -507,7 +534,11 @@ void do_build(const char *infile, const char *outfile, int block_size)
 	// dictionary size is ~100 kB, but 1 kB seems to actually compress better for us,
 	// and decompress just as fast.
 	DictionaryBuilder builder(/*blocks_to_keep=*/1000, block_size);
-	read_mlocate(infp, &builder);
+	if (plaintext) {
+		read_plaintext(infp, &builder);
+	} else {
+		read_mlocate(infp, &builder);
+	}
 	string dictionary = builder.train(1024);
 	ZSTD_CDict *cdict = ZSTD_createCDict(dictionary.data(), dictionary.size(), /*level=*/6);
 
@@ -516,23 +547,13 @@ void do_build(const char *infile, const char *outfile, int block_size)
 	hdr.zstd_dictionary_length_bytes = dictionary.size();
 
 	Corpus corpus(outfp, block_size, cdict);
-	read_mlocate(infp, &corpus);
+	if (plaintext) {
+		read_plaintext(infp, &corpus);
+	} else {
+		read_mlocate(infp, &corpus);
+	}
 	fclose(infp);
 
-	if (false) {  // To read a plain text file.
-		FILE *fp = fopen(infile, "r");
-		while (!feof(fp)) {
-			char buf[1024];
-			if (fgets(buf, 1024, fp) == nullptr || feof(fp)) {
-				break;
-			}
-			string s(buf);
-			if (s.back() == '\n')
-				s.pop_back();
-			corpus.add_file(move(s));
-		}
-		fclose(fp);
-	}
 	corpus.flush_block();
 	dprintf("Read %zu files from %s\n", corpus.num_files, infile);
 	hdr.num_docids = corpus.filename_blocks.size();
@@ -643,6 +664,7 @@ void usage()
 		"Normally, the destination should be /var/lib/mlocate/plocate.db.\n"
 		"\n"
 		"  -b, --block-size SIZE  number of filenames to store in each block (default 32)\n"
+		"  -p, --plaintext        input is a plaintext file, not an mlocate database\n"
 		"      --help             print this help\n"
 		"      --version          print version information\n");
 }
@@ -660,6 +682,7 @@ int main(int argc, char **argv)
 {
 	static const struct option long_options[] = {
 		{ "block-size", required_argument, 0, 'b' },
+		{ "plaintext", no_argument, 0, 'p' },
 		{ "help", no_argument, 0, 'h' },
 		{ "version", no_argument, 0, 'V' },
 		{ "debug", no_argument, 0, 'D' },  // Not documented.
@@ -667,17 +690,21 @@ int main(int argc, char **argv)
 	};
 
 	int block_size = 32;
+	bool plaintext = false;
 
 	setlocale(LC_ALL, "");
 	for (;;) {
 		int option_index = 0;
-		int c = getopt_long(argc, argv, "b:hVD", long_options, &option_index);
+		int c = getopt_long(argc, argv, "b:hpVD", long_options, &option_index);
 		if (c == -1) {
 			break;
 		}
 		switch (c) {
 		case 'b':
 			block_size = atoi(optarg);
+			break;
+		case 'p':
+			plaintext = true;
 			break;
 		case 'h':
 			usage();
@@ -698,6 +725,6 @@ int main(int argc, char **argv)
 		exit(1);
 	}
 
-	do_build(argv[optind], argv[optind + 1], block_size);
+	do_build(argv[optind], argv[optind + 1], block_size, plaintext);
 	exit(EXIT_SUCCESS);
 }
