@@ -1,3 +1,16 @@
+plocate 1.0.6, October 30th, 2020
+
+  - Escape unprintable characters, quotes, newlines and the likes
+    when outputting file names to a terminal, similar to GNU ls.
+    This is to reduce the security impact of malicious filenames
+    (e.g. containing color or more nefarious escape codes).
+    It is not active when using -0, or when piping to another program.
+
+  - Support building databases from plaintext files (plocate-build -p).
+
+  - Portability fixes.
+
+
 plocate 1.0.5, October 17th, 2020
 
   - Implement the -b/--basename option.
