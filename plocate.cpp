@@ -55,6 +55,7 @@ bool use_extended_regex = false;
 bool match_basename = false;
 int64_t limit_matches = numeric_limits<int64_t>::max();
 int64_t limit_left = numeric_limits<int64_t>::max();
+bool stdout_is_tty = false;
 
 steady_clock::time_point start;
 ZSTD_DDict *ddict = nullptr;
@@ -765,6 +766,10 @@ int main(int argc, char **argv)
 			perror("setgid");
 			exit(EXIT_FAILURE);
 		}
+	}
+
+	if (!print_nul) {
+		stdout_is_tty = isatty(1);
 	}
 
 	vector<Needle> needles;

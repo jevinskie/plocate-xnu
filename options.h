@@ -13,5 +13,6 @@ extern bool patterns_are_regex;
 extern bool use_extended_regex;
 extern int64_t limit_matches;
 extern int64_t limit_left;  // Not strictly an option.
+extern bool stdout_is_tty;  // Same.
 
 #endif  // !defined(_OPTIONS_H)
