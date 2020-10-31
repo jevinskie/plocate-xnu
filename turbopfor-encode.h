@@ -104,8 +104,8 @@ inline unsigned num_bits(Docid x)
 		return sizeof(Docid) * CHAR_BIT - __builtin_clz(x);
 	}
 #else
-	for (int i = sizeof(Docid) * CHAR_BIT; i-- > 0; ) {
-		if (x & (Docid{1} << i)) {
+	for (int i = sizeof(Docid) * CHAR_BIT; i-- > 0;) {
+		if (x & (Docid{ 1 } << i)) {
 			return i;
 		}
 	}
