@@ -1,6 +1,8 @@
 #include <algorithm>
 #include <assert.h>
+#ifdef HAS_ENDIAN_H
 #include <endian.h>
+#endif
 #include <stdint.h>
 #include <string.h>
 #include <strings.h>

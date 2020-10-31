@@ -12,6 +12,9 @@ atomicdep = cxx.find_library('atomic', required: false)
 if not uringdep.found()
 	add_project_arguments('-DWITHOUT_URING', language: 'cpp')
 endif
+if cxx.has_header('endian.h')
+	add_project_arguments('-DHAS_ENDIAN_H', language: 'cpp')
+endif
 
 # Function multiversioning is x86-only _and_ not available on certain targets
 # (they need “ifunc”, indirect functions, a GNU extension).
