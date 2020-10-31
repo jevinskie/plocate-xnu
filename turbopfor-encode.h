@@ -15,6 +15,7 @@
 
 #include <algorithm>
 #include <assert.h>
+#include <endian.h>
 #include <limits.h>
 #include <stdint.h>
 #include <string.h>
