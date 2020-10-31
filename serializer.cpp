@@ -84,6 +84,7 @@ void print_possibly_escaped(const string &str)
 			printf("?");
 			++ptr;
 			--len;
+			continue;
 		} else if (ret == 0) {
 			break;  // EOF.
 		}
