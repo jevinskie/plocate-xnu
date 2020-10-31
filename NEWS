@@ -1,3 +1,13 @@
+plocate 1.0.7, October 31st, 2020
+
+  - Fix an infinite loop when encountering invalid UTF-8 in file names.
+    Bug report and patch by Leah Neukirchen.
+
+  - Typo fixes in man pages; patch by Leah Neukirchen.
+
+  - Portability fixes.
+
+
 plocate 1.0.6, October 30th, 2020
 
   - Escape unprintable characters, quotes, newlines and the likes
