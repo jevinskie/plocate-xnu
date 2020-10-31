@@ -60,7 +60,7 @@ void print_possibly_escaped(const string &str)
 			ptr += ret;
 			len -= ret;
 		}
-	} while (all_safe);
+	} while (all_safe && *ptr != '\0');
 
 	if (all_safe) {
 		printf("%s\n", str.c_str());
@@ -77,7 +77,7 @@ void print_possibly_escaped(const string &str)
 	mbtowc(nullptr, 0, 0);
 	ptr = str.data();
 	len = str.size();
-	for (;;) {
+	while (*ptr != '\0') {
 		int ret = mbtowc(nullptr, ptr, len);
 		if (ret == -1) {
 			// Malformed data.
