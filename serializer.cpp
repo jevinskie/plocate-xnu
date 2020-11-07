@@ -56,6 +56,9 @@ void print_possibly_escaped(const string &str)
 			break;  // EOF.
 		} else if (pwc < 32 || pwc == '\'' || pwc == '"' || pwc == '\\') {
 			all_safe = false;
+		} else if (pwc == '`') {
+			// A rather odd case; ls quotes this but does not escape it.
+			all_safe = false;
 		} else {
 			ptr += ret;
 			len -= ret;
