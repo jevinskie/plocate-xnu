@@ -502,25 +502,32 @@ unique_ptr<Trigram[]> create_hashtable(Corpus &corpus, const vector<uint32_t> &a
 	return ht;
 }
 
-void do_build(const char *infile, const char *outfile, int block_size, bool plaintext)
+class DatabaseBuilder {
+public:
+	DatabaseBuilder(const char *outfile, int block_size, string dictionary);
+	Corpus *start_corpus();
+	void finish_corpus();
+
+private:
+	FILE *outfp;
+	Header hdr;
+	const int block_size;
+	steady_clock::time_point corpus_start;
+	Corpus *corpus = nullptr;
+	ZSTD_CDict *cdict = nullptr;
+};
+
+DatabaseBuilder::DatabaseBuilder(const char *outfile, int block_size, string dictionary)
+	: block_size(block_size)
 {
-	steady_clock::time_point start = steady_clock::now();
-
-	FILE *infp = fopen(infile, "rb");
-	if (infp == nullptr) {
-		perror(infile);
-		exit(1);
-	}
-
 	umask(0027);
-	FILE *outfp = fopen(outfile, "wb");
+	outfp = fopen(outfile, "wb");
 	if (outfp == nullptr) {
 		perror(outfile);
 		exit(1);
 	}
 
 	// Write the header.
-	Header hdr;
 	memcpy(hdr.magic, "\0plocate", 8);
 	hdr.version = -1;  // Mark as broken.
 	hdr.hashtable_size = 0;  // Not known yet.
@@ -532,69 +539,63 @@ void do_build(const char *infile, const char *outfile, int block_size, bool plai
 	hdr.zstd_dictionary_length_bytes = -1;
 	fwrite(&hdr, sizeof(hdr), 1, outfp);
 
-	// Train the dictionary by sampling real blocks.
-	// The documentation for ZDICT_trainFromBuffer() claims that a reasonable
-	// dictionary size is ~100 kB, but 1 kB seems to actually compress better for us,
-	// and decompress just as fast.
-	DictionaryBuilder builder(/*blocks_to_keep=*/1000, block_size);
-	if (plaintext) {
-		read_plaintext(infp, &builder);
+	if (dictionary.empty()) {
+		hdr.zstd_dictionary_offset_bytes = 0;
+		hdr.zstd_dictionary_length_bytes = 0;
 	} else {
-		read_mlocate(infp, &builder);
+		hdr.zstd_dictionary_offset_bytes = ftell(outfp);
+		fwrite(dictionary.data(), dictionary.size(), 1, outfp);
+		hdr.zstd_dictionary_length_bytes = dictionary.size();
+		cdict = ZSTD_createCDict(dictionary.data(), dictionary.size(), /*level=*/6);
 	}
-	string dictionary = builder.train(1024);
-	ZSTD_CDict *cdict = ZSTD_createCDict(dictionary.data(), dictionary.size(), /*level=*/6);
+}
 
-	hdr.zstd_dictionary_offset_bytes = ftell(outfp);
-	fwrite(dictionary.data(), dictionary.size(), 1, outfp);
-	hdr.zstd_dictionary_length_bytes = dictionary.size();
+Corpus *DatabaseBuilder::start_corpus()
+{
+	corpus_start = steady_clock::now();
+	corpus = new Corpus(outfp, block_size, cdict);
+	return corpus;
+}
 
-	Corpus corpus(outfp, block_size, cdict);
-	if (plaintext) {
-		read_plaintext(infp, &corpus);
-	} else {
-		read_mlocate(infp, &corpus);
-	}
-	fclose(infp);
-
-	corpus.flush_block();
-	dprintf("Read %zu files from %s\n", corpus.num_files, infile);
-	hdr.num_docids = corpus.filename_blocks.size();
+void DatabaseBuilder::finish_corpus()
+{
+	corpus->flush_block();
+	hdr.num_docids = corpus->filename_blocks.size();
 
 	// Stick an empty block at the end as sentinel.
-	corpus.filename_blocks.push_back(ftell(outfp));
-	const size_t bytes_for_filenames = corpus.filename_blocks.back() - corpus.filename_blocks.front();
+	corpus->filename_blocks.push_back(ftell(outfp));
+	const size_t bytes_for_filenames = corpus->filename_blocks.back() - corpus->filename_blocks.front();
 
 	// Write the offsets to the filenames.
 	hdr.filename_index_offset_bytes = ftell(outfp);
-	const size_t bytes_for_filename_index = corpus.filename_blocks.size() * sizeof(uint64_t);
-	fwrite(corpus.filename_blocks.data(), corpus.filename_blocks.size(), sizeof(uint64_t), outfp);
-	corpus.filename_blocks.clear();
-	corpus.filename_blocks.shrink_to_fit();
+	const size_t bytes_for_filename_index = corpus->filename_blocks.size() * sizeof(uint64_t);
+	fwrite(corpus->filename_blocks.data(), corpus->filename_blocks.size(), sizeof(uint64_t), outfp);
+	corpus->filename_blocks.clear();
+	corpus->filename_blocks.shrink_to_fit();
 
 	// Finish up encoding the posting lists.
 	size_t trigrams = 0, longest_posting_list = 0;
 	size_t bytes_for_posting_lists = 0;
 	for (unsigned trgm = 0; trgm < NUM_TRIGRAMS; ++trgm) {
-		if (!corpus.seen_trigram(trgm))
+		if (!corpus->seen_trigram(trgm))
 			continue;
-		PostingListBuilder &pl_builder = corpus.get_pl_builder(trgm);
+		PostingListBuilder &pl_builder = corpus->get_pl_builder(trgm);
 		pl_builder.finish();
 		longest_posting_list = max(longest_posting_list, pl_builder.num_docids);
 		trigrams += pl_builder.num_docids;
 		bytes_for_posting_lists += pl_builder.encoded.size();
 	}
-	size_t num_trigrams = corpus.num_trigrams();
+	size_t num_trigrams = corpus->num_trigrams();
 	dprintf("%zu files, %zu different trigrams, %zu entries, avg len %.2f, longest %zu\n",
-	        corpus.num_files, num_trigrams, trigrams, double(trigrams) / num_trigrams, longest_posting_list);
+	        corpus->num_files, num_trigrams, trigrams, double(trigrams) / num_trigrams, longest_posting_list);
 	dprintf("%zu bytes used for posting lists (%.2f bits/entry)\n", bytes_for_posting_lists, 8 * bytes_for_posting_lists / double(trigrams));
 
-	dprintf("Building posting lists took %.1f ms.\n\n", 1e3 * duration<float>(steady_clock::now() - start).count());
+	dprintf("Building posting lists took %.1f ms.\n\n", 1e3 * duration<float>(steady_clock::now() - corpus_start).count());
 
 	// Find the used trigrams.
 	vector<uint32_t> all_trigrams;
 	for (unsigned trgm = 0; trgm < NUM_TRIGRAMS; ++trgm) {
-		if (corpus.seen_trigram(trgm)) {
+		if (corpus->seen_trigram(trgm)) {
 			all_trigrams.push_back(trgm);
 		}
 	}
@@ -603,7 +604,7 @@ void do_build(const char *infile, const char *outfile, int block_size, bool plai
 	unique_ptr<Trigram[]> hashtable;
 	uint32_t ht_size = next_prime(all_trigrams.size());
 	for (;;) {
-		hashtable = create_hashtable(corpus, all_trigrams, ht_size, num_overflow_slots);
+		hashtable = create_hashtable(*corpus, all_trigrams, ht_size, num_overflow_slots);
 		if (hashtable == nullptr) {
 			dprintf("Failed creating hash table of size %u, increasing by 5%% and trying again.\n", ht_size);
 			ht_size = next_prime(ht_size * 1.05);
@@ -622,7 +623,7 @@ void do_build(const char *infile, const char *outfile, int block_size, bool plai
 			continue;
 		}
 
-		const string &encoded = corpus.get_pl_builder(hashtable[i].trgm).encoded;
+		const string &encoded = corpus->get_pl_builder(hashtable[i].trgm).encoded;
 		offset += encoded.size();
 	}
 
@@ -636,7 +637,7 @@ void do_build(const char *infile, const char *outfile, int block_size, bool plai
 		if (hashtable[i].num_docids == 0) {
 			continue;
 		}
-		const string &encoded = corpus.get_pl_builder(hashtable[i].trgm).encoded;
+		const string &encoded = corpus->get_pl_builder(hashtable[i].trgm).encoded;
 		fwrite(encoded.data(), encoded.size(), 1, outfp);
 	}
 
@@ -649,13 +650,46 @@ void do_build(const char *infile, const char *outfile, int block_size, bool plai
 	size_t total_bytes = (bytes_for_hashtable + bytes_for_posting_lists + bytes_for_filename_index + bytes_for_filenames);
 
 	dprintf("Block size:     %7d files\n", block_size);
-	dprintf("Dictionary:     %'7.1f MB\n", dictionary.size() / 1048576.0);
+	dprintf("Dictionary:     %'7.1f MB\n", hdr.zstd_dictionary_length_bytes / 1048576.0);
 	dprintf("Hash table:     %'7.1f MB\n", bytes_for_hashtable / 1048576.0);
 	dprintf("Posting lists:  %'7.1f MB\n", bytes_for_posting_lists / 1048576.0);
 	dprintf("Filename index: %'7.1f MB\n", bytes_for_filename_index / 1048576.0);
 	dprintf("Filenames:      %'7.1f MB\n", bytes_for_filenames / 1048576.0);
 	dprintf("Total:          %'7.1f MB\n", total_bytes / 1048576.0);
 	dprintf("\n");
+}
+
+void do_build(const char *infile, const char *outfile, int block_size, bool plaintext)
+{
+	FILE *infp = fopen(infile, "rb");
+	if (infp == nullptr) {
+		perror(infile);
+		exit(1);
+	}
+
+	// Train the dictionary by sampling real blocks.
+	// The documentation for ZDICT_trainFromBuffer() claims that a reasonable
+	// dictionary size is ~100 kB, but 1 kB seems to actually compress better for us,
+	// and decompress just as fast.
+	DictionaryBuilder builder(/*blocks_to_keep=*/1000, block_size);
+	if (plaintext) {
+		read_plaintext(infp, &builder);
+	} else {
+		read_mlocate(infp, &builder);
+	}
+	string dictionary = builder.train(1024);
+
+	DatabaseBuilder db(outfile, block_size, dictionary);
+	Corpus *corpus = db.start_corpus();
+	if (plaintext) {
+		read_plaintext(infp, corpus);
+	} else {
+		read_mlocate(infp, corpus);
+	}
+	fclose(infp);
+
+	dprintf("Read %zu files from %s\n", corpus->num_files, infile);
+	db.finish_corpus();
 }
 
 void usage()
