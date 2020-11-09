@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <assert.h>
+#include <arpa/inet.h>
 #include <chrono>
 #include <getopt.h>
 #include <iosfwd>
@@ -420,6 +421,12 @@ void read_mlocate(FILE *fp, DatabaseReceiver *receiver)
 
 	// TODO: Care about the base path.
 	string path = read_cstr(fp);
+
+	if (fseek(fp, ntohl(hdr.conf_size), SEEK_CUR) != 0) {
+		perror("skip conf block");
+		exit(1);
+	}
+
 	while (!feof(fp)) {
 		handle_directory(fp, receiver);
 	}
