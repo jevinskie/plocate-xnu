@@ -29,7 +29,7 @@ executable('plocate', ['plocate.cpp', 'io_uring_engine.cpp', 'turbopfor.cpp', 'p
 	dependencies: [uringdep, zstddep, threaddep, atomicdep],
 	install: true,
 	install_mode: ['rwxr-sr-x', 'root', 'mlocate'])
-executable('plocate-build', 'plocate-build.cpp',
+executable('plocate-build', ['plocate-build.cpp', 'database-builder.cpp'],
 	dependencies: [zstddep],
 	install: true,
 	install_dir: get_option('sbindir'))
