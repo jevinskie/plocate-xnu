@@ -244,9 +244,6 @@ void Corpus::flush_block()
 void Corpus::finish()
 {
 	flush_block();
-	string tempbuf;
-	string compressed = zstd_compress(directory_data, nullptr, &tempbuf);
-	fprintf(stderr, "dirdata: %zu bytes (compressed: %zu)\n", directory_data.size(), compressed.size());
 }
 
 size_t Corpus::num_trigrams() const

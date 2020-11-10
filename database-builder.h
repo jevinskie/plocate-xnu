@@ -68,7 +68,6 @@ private:
 	std::string tempbuf;
 	const size_t block_size;
 	ZSTD_CDict *cdict;
-	std::string directory_data;
 };
 
 class DatabaseBuilder {
