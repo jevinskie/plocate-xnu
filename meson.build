@@ -1,7 +1,11 @@
 project('plocate', 'cpp', default_options: ['buildtype=debugoptimized','cpp_std=c++17'], version: '1.0.8-pre')
 
-# Make the version available as a #define.
-add_project_arguments('-DPLOCATE_VERSION="' + meson.project_version() + '"', language: 'cpp')
+add_project_arguments('-DGROUPNAME="' + get_option('locategroup') + '"', language: 'cpp')
+add_project_arguments('-DUPDATEDB_CONF="/etc/updatedb.conf"', language: 'cpp')
+add_project_arguments('-DDBFILE="/var/lib/mlocate/plocate.db"', language: 'cpp')
+add_project_arguments('-DPACKAGE_NAME="plocate"', language: 'cpp')
+add_project_arguments('-DPACKAGE_VERSION="' + meson.project_version() + '"', language: 'cpp')
+add_project_arguments('-DPACKAGE_BUGREPORT="steinar+plocate@gunderson.no"', language: 'cpp')
 
 cxx = meson.get_compiler('cpp')
 uringdep = dependency('liburing', required: false)
@@ -31,6 +35,10 @@ executable('plocate', ['plocate.cpp', 'io_uring_engine.cpp', 'turbopfor.cpp', 'p
 	install_mode: ['rwxr-sr-x', 'root', 'mlocate'])
 executable('plocate-build', ['plocate-build.cpp', 'database-builder.cpp'],
 	dependencies: [zstddep],
+	install: true,
+	install_dir: get_option('sbindir'))
+executable('updatedb', ['updatedb.cpp', 'database-builder.cpp', 'conf.cpp', 'lib.cpp', 'bind-mount.cpp', 'complete_pread.cpp'],
+	dependencies: [zstddep, threaddep],
 	install: true,
 	install_dir: get_option('sbindir'))
 

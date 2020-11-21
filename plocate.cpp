@@ -43,9 +43,7 @@
 using namespace std;
 using namespace std::chrono;
 
-#define DEFAULT_DBPATH "/var/lib/mlocate/plocate.db"
-
-const char *dbpath = DEFAULT_DBPATH;
+const char *dbpath = DBFILE;
 bool ignore_case = false;
 bool only_count = false;
 bool print_nul = false;
@@ -656,7 +654,7 @@ void usage()
 		"  -b, --basename         search only the file name portion of path names\n"
 		"  -c, --count            print number of matches instead of the matches\n"
 		"  -d, --database DBPATH  search for files in DBPATH\n"
-		"                         (default is " DEFAULT_DBPATH ")\n"
+		"                         (default is " DBFILE ")\n"
 		"  -i, --ignore-case      search case-insensitively\n"
 		"  -l, --limit LIMIT      stop after LIMIT matches\n"
 		"  -0, --null             delimit matches by NUL instead of newline\n"
@@ -669,7 +667,7 @@ void usage()
 
 void version()
 {
-	printf("plocate %s\n", PLOCATE_VERSION);
+	printf("%s %s\n", PACKAGE_NAME, PACKAGE_VERSION);
 	printf("Copyright 2020 Steinar H. Gunderson\n");
 	printf("License GPLv2+: GNU GPL version 2 or later <https://gnu.org/licenses/gpl.html>.\n");
 	printf("This is free software: you are free to change and redistribute it.\n");

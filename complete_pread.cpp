@@ -3,7 +3,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 
-void complete_pread(int fd, void *ptr, size_t len, off_t offset)
+bool try_complete_pread(int fd, void *ptr, size_t len, off_t offset)
 {
 	while (len > 0) {
 		ssize_t ret = pread(fd, ptr, len, offset);
@@ -11,11 +11,19 @@ void complete_pread(int fd, void *ptr, size_t len, off_t offset)
 			continue;
 		}
 		if (ret <= 0) {
-			perror("pread");
-			exit(1);
+			return false;
 		}
 		ptr = reinterpret_cast<char *>(ptr) + ret;
 		len -= ret;
 		offset -= ret;
+	}
+	return true;
+}
+
+void complete_pread(int fd, void *ptr, size_t len, off_t offset)
+{
+	if (!try_complete_pread(fd, ptr, len, offset)) {
+		perror("pread");
+		exit(1);
 	}
 }

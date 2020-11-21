@@ -33,6 +33,11 @@ the reference implementation, you can check it out and run as follows:
   ninja reconfigure
   ninja bench
 
-Copyright 2020 Steinar H. Gunderson <steinar+plocate@gunderson.no>.
+plocate (except updatedb), and the plocate-specific changes to updatedb,
+is Copyright 2020 Steinar H. Gunderson <steinar+plocate@gunderson.no>.
 Licensed under the GNU General Public License, either version 2,
 or (at your option) any later version. See the included file COPYING.
+
+updatedb is Copyright (C) 2005, 2007 Red Hat, Inc. All rights reserved.
+Licensed under the GNU General Public License, version 2. See the
+included file COPYING.

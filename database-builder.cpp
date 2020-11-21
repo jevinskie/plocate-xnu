@@ -113,7 +113,7 @@ void PostingListBuilder::write_header(uint32_t docid)
 	encoded.append(reinterpret_cast<char *>(buf), end - buf);
 }
 
-void DictionaryBuilder::add_file(string filename)
+void DictionaryBuilder::add_file(string filename, dir_time)
 {
 	if (keep_current_block) {  // Only bother saving the filenames if we're actually keeping the block.
 		if (!current_block.empty()) {
@@ -175,10 +175,14 @@ string DictionaryBuilder::train(size_t buf_size)
 	return buf;
 }
 
-Corpus::Corpus(FILE *outfp, size_t block_size, ZSTD_CDict *cdict)
-	: invindex(new PostingListBuilder *[NUM_TRIGRAMS]), outfp(outfp), block_size(block_size), cdict(cdict)
+Corpus::Corpus(FILE *outfp, size_t block_size, ZSTD_CDict *cdict, bool store_dir_times)
+	: invindex(new PostingListBuilder *[NUM_TRIGRAMS]), outfp(outfp), block_size(block_size), store_dir_times(store_dir_times), cdict(cdict)
 {
 	fill(invindex.get(), invindex.get() + NUM_TRIGRAMS, nullptr);
+	if (store_dir_times) {
+		dir_time_ctx = ZSTD_createCStream();
+		ZSTD_initCStream(dir_time_ctx, /*level=*/6);
+	}
 }
 
 Corpus::~Corpus()
@@ -196,7 +200,7 @@ PostingListBuilder &Corpus::get_pl_builder(uint32_t trgm)
 	return *invindex[trgm];
 }
 
-void Corpus::add_file(string filename)
+void Corpus::add_file(string filename, dir_time dt)
 {
 	++num_files;
 	if (!current_block.empty()) {
@@ -205,6 +209,49 @@ void Corpus::add_file(string filename)
 	current_block += filename;
 	if (++num_files_in_block == block_size) {
 		flush_block();
+	}
+
+	if (store_dir_times) {
+		if (dt.sec == -1) {
+			// Not a directory.
+			dir_times.push_back('\0');
+		} else {
+			dir_times.push_back('\1');
+			dir_times.append(reinterpret_cast<char *>(&dt.sec), sizeof(dt.sec));
+			dir_times.append(reinterpret_cast<char *>(&dt.nsec), sizeof(dt.nsec));
+		}
+		compress_dir_times(/*allowed_slop=*/4096);
+	}
+}
+
+void Corpus::compress_dir_times(size_t allowed_slop) {
+	while (dir_times.size() >= allowed_slop) {
+		size_t old_size = dir_times_compressed.size();
+		dir_times_compressed.resize(old_size + 4096);
+
+		ZSTD_outBuffer outbuf;
+		outbuf.dst = dir_times_compressed.data() + old_size;
+		outbuf.size = 4096;
+		outbuf.pos = 0;
+
+		ZSTD_inBuffer inbuf;
+		inbuf.src = dir_times.data();
+		inbuf.size = dir_times.size();
+		inbuf.pos = 0;
+
+		int ret = ZSTD_compressStream(dir_time_ctx, &outbuf, &inbuf);
+		if (ret < 0) {
+			fprintf(stderr, "ZSTD_compressStream() failed\n");
+			exit(1);
+		}
+
+		dir_times_compressed.resize(old_size + outbuf.pos);
+		dir_times.erase(dir_times.begin(), dir_times.begin() + inbuf.pos);
+
+		if (outbuf.pos == 0 && inbuf.pos == 0) {
+			// Nothing happened (not enough data?), try again later.
+			return;
+		}
 	}
 }
 
@@ -256,6 +303,40 @@ size_t Corpus::num_trigrams() const
 		}
 	}
 	return num;
+}
+
+string Corpus::get_compressed_dir_times()
+{
+	if (!store_dir_times) {
+		return "";
+	}
+	compress_dir_times(/*allowed_slop=*/0);
+	assert(dir_times.empty());
+
+	for ( ;; ) {
+		size_t old_size = dir_times_compressed.size();
+		dir_times_compressed.resize(old_size + 4096);
+
+		ZSTD_outBuffer outbuf;
+		outbuf.dst = dir_times_compressed.data() + old_size;
+		outbuf.size = 4096;
+		outbuf.pos = 0;
+
+		int ret = ZSTD_endStream(dir_time_ctx, &outbuf);
+		if (ret < 0) {
+			fprintf(stderr, "ZSTD_compressStream() failed\n");
+			exit(1);
+		}
+
+		dir_times_compressed.resize(old_size + outbuf.pos);
+
+		if (ret == 0) {
+			// All done.
+			break;
+		}
+	}
+
+	return dir_times_compressed;
 }
 
 string zstd_compress(const string &src, ZSTD_CDict *cdict, string *tempbuf)
@@ -335,17 +416,27 @@ unique_ptr<Trigram[]> create_hashtable(Corpus &corpus, const vector<uint32_t> &a
 	return ht;
 }
 
-DatabaseBuilder::DatabaseBuilder(const char *outfile, int block_size, string dictionary)
+DatabaseBuilder::DatabaseBuilder(const char *outfile, gid_t owner, int block_size, string dictionary)
 	: outfile(outfile), block_size(block_size)
 {
 	umask(0027);
 
 	string path = outfile;
 	path.resize(path.find_last_of('/') + 1);
+	if (path.empty()) {
+		path = ".";
+	}
 	int fd = open(path.c_str(), O_WRONLY | O_TMPFILE, 0640);
 	if (fd == -1) {
 		perror(path.c_str());
 		exit(1);
+	}
+
+	if (owner != (gid_t)-1) {
+		if (fchown(fd, (uid_t)-1, owner) == -1) {
+			perror("fchown");
+			exit(1);
+		}
 	}
 
 	outfp = fdopen(fd, "wb");
@@ -361,7 +452,7 @@ DatabaseBuilder::DatabaseBuilder(const char *outfile, int block_size, string dic
 	hdr.extra_ht_slots = num_overflow_slots;
 	hdr.num_docids = 0;
 	hdr.hash_table_offset_bytes = -1;  // We don't know these offsets yet.
-	hdr.max_version = 1;
+	hdr.max_version = 2;
 	hdr.filename_index_offset_bytes = -1;
 	hdr.zstd_dictionary_length_bytes = -1;
 	fwrite(&hdr, sizeof(hdr), 1, outfp);
@@ -375,13 +466,30 @@ DatabaseBuilder::DatabaseBuilder(const char *outfile, int block_size, string dic
 		hdr.zstd_dictionary_length_bytes = dictionary.size();
 		cdict = ZSTD_createCDict(dictionary.data(), dictionary.size(), /*level=*/6);
 	}
+
+	hdr.directory_data_length_bytes = 0;
+	hdr.directory_data_offset_bytes = 0;
+	hdr.next_zstd_dictionary_length_bytes = 0;
+	hdr.next_zstd_dictionary_offset_bytes = 0;
+	hdr.conf_block_length_bytes = 0;
+	hdr.conf_block_offset_bytes = 0;
 }
 
-Corpus *DatabaseBuilder::start_corpus()
+Corpus *DatabaseBuilder::start_corpus(bool store_dir_times)
 {
 	corpus_start = steady_clock::now();
-	corpus = new Corpus(outfp, block_size, cdict);
+	corpus = new Corpus(outfp, block_size, cdict, store_dir_times);
 	return corpus;
+}
+
+void DatabaseBuilder::set_next_dictionary(std::string next_dictionary)
+{
+	this->next_dictionary = move(next_dictionary);
+}
+
+void DatabaseBuilder::set_conf_block(std::string conf_block)
+{
+	this->conf_block = move(conf_block);
 }
 
 void DatabaseBuilder::finish_corpus()
@@ -468,6 +576,31 @@ void DatabaseBuilder::finish_corpus()
 		fwrite(encoded.data(), encoded.size(), 1, outfp);
 	}
 
+	// Finally, write the directory times (for updatedb).
+	string compressed_dir_times = corpus->get_compressed_dir_times();
+	size_t bytes_for_compressed_dir_times = 0;
+	if (!compressed_dir_times.empty()) {
+		hdr.directory_data_offset_bytes = ftell(outfp);
+		hdr.directory_data_length_bytes = compressed_dir_times.size();
+		fwrite(compressed_dir_times.data(), compressed_dir_times.size(), 1, outfp);
+		bytes_for_compressed_dir_times = compressed_dir_times.size();
+		compressed_dir_times.clear();
+	}
+
+	// Write the recommended dictionary for next update.
+	if (!next_dictionary.empty()) {
+		hdr.next_zstd_dictionary_offset_bytes = ftell(outfp);
+		hdr.next_zstd_dictionary_length_bytes = next_dictionary.size();
+		fwrite(next_dictionary.data(), next_dictionary.size(), 1, outfp);
+	}
+
+	// And the configuration block.
+	if (!conf_block.empty()) {
+		hdr.next_zstd_dictionary_offset_bytes = ftell(outfp);
+		hdr.next_zstd_dictionary_length_bytes = conf_block.size();
+		fwrite(conf_block.data(), conf_block.size(), 1, outfp);
+	}
+
 	// Rewind, and write the updated header.
 	hdr.version = 1;
 	fseek(outfp, 0, SEEK_SET);
@@ -485,7 +618,7 @@ void DatabaseBuilder::finish_corpus()
 
 	fclose(outfp);
 
-	size_t total_bytes = (bytes_for_hashtable + bytes_for_posting_lists + bytes_for_filename_index + bytes_for_filenames);
+	size_t total_bytes = (bytes_for_hashtable + bytes_for_posting_lists + bytes_for_filename_index + bytes_for_filenames + bytes_for_compressed_dir_times);
 
 	dprintf("Block size:     %7d files\n", block_size);
 	dprintf("Dictionary:     %'7.1f MB\n", hdr.zstd_dictionary_length_bytes / 1048576.0);
@@ -493,6 +626,9 @@ void DatabaseBuilder::finish_corpus()
 	dprintf("Posting lists:  %'7.1f MB\n", bytes_for_posting_lists / 1048576.0);
 	dprintf("Filename index: %'7.1f MB\n", bytes_for_filename_index / 1048576.0);
 	dprintf("Filenames:      %'7.1f MB\n", bytes_for_filenames / 1048576.0);
+	if (bytes_for_compressed_dir_times != 0) {
+		dprintf("Modify times:   %'7.1f MB\n", bytes_for_compressed_dir_times / 1048576.0);
+	}
 	dprintf("Total:          %'7.1f MB\n", total_bytes / 1048576.0);
 	dprintf("\n");
 }

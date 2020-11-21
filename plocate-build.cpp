@@ -83,10 +83,10 @@ void handle_directory(FILE *fp, DatabaseReceiver *receiver)
 		int type = getc(fp);
 		if (type == DBE_NORMAL) {
 			string filename = read_cstr(fp);
-			receiver->add_file(dir_path + "/" + filename);
+			receiver->add_file(dir_path + "/" + filename, unknown_dir_time);
 		} else if (type == DBE_DIRECTORY) {
 			string dirname = read_cstr(fp);
-			receiver->add_file(dir_path + "/" + dirname);
+			receiver->add_file(dir_path + "/" + dirname, unknown_dir_time);
 		} else {
 			return;  // Probably end.
 		}
@@ -116,7 +116,7 @@ void read_plaintext(FILE *fp, DatabaseReceiver *receiver)
 		}
 		if (!s.empty() && s.back() == '\n')
 			s.pop_back();
-		receiver->add_file(move(s));
+		receiver->add_file(move(s), unknown_dir_time);
 	}
 }
 
@@ -166,8 +166,8 @@ void do_build(const char *infile, const char *outfile, int block_size, bool plai
 	}
 	string dictionary = builder.train(1024);
 
-	DatabaseBuilder db(outfile, block_size, dictionary);
-	Corpus *corpus = db.start_corpus();
+	DatabaseBuilder db(outfile, /*owner=*/-1, block_size, dictionary);
+	Corpus *corpus = db.start_corpus(/*store_dir_times=*/false);
 	if (plaintext) {
 		read_plaintext(infp, corpus);
 	} else {
@@ -195,7 +195,7 @@ void usage()
 
 void version()
 {
-	printf("plocate-build %s\n", PLOCATE_VERSION);
+	printf("plocate-build %s\n", PACKAGE_VERSION);
 	printf("Copyright 2020 Steinar H. Gunderson\n");
 	printf("License GPLv2+: GNU GPL version 2 or later <https://gnu.org/licenses/gpl.html>.\n");
 	printf("This is free software: you are free to change and redistribute it.\n");
