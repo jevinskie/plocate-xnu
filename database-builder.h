@@ -78,6 +78,7 @@ public:
 
 private:
 	FILE *outfp;
+	std::string outfile;
 	Header hdr;
 	const int block_size;
 	std::chrono::steady_clock::time_point corpus_start;

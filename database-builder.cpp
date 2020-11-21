@@ -11,6 +11,7 @@
 #include <sys/stat.h>
 #include <sys/time.h>
 #include <sys/types.h>
+#include <unistd.h>
 #include <zdict.h>
 #include <zstd.h>
 
@@ -335,10 +336,19 @@ unique_ptr<Trigram[]> create_hashtable(Corpus &corpus, const vector<uint32_t> &a
 }
 
 DatabaseBuilder::DatabaseBuilder(const char *outfile, int block_size, string dictionary)
-	: block_size(block_size)
+	: outfile(outfile), block_size(block_size)
 {
 	umask(0027);
-	outfp = fopen(outfile, "wb");
+
+	string path = outfile;
+	path.resize(path.find_last_of('/') + 1);
+	int fd = open(path.c_str(), O_WRONLY | O_TMPFILE, 0640);
+	if (fd == -1) {
+		perror(path.c_str());
+		exit(1);
+	}
+
+	outfp = fdopen(fd, "wb");
 	if (outfp == nullptr) {
 		perror(outfile);
 		exit(1);
@@ -462,6 +472,17 @@ void DatabaseBuilder::finish_corpus()
 	hdr.version = 1;
 	fseek(outfp, 0, SEEK_SET);
 	fwrite(&hdr, sizeof(hdr), 1, outfp);
+
+	// Give the file a proper name, making it visible in the file system.
+	// TODO: It would be nice to be able to do this atomically, like with rename.
+	unlink(outfile.c_str());
+	char procpath[256];
+	snprintf(procpath, sizeof(procpath), "/proc/self/fd/%d", fileno(outfp));
+	if (linkat(AT_FDCWD, procpath, AT_FDCWD, outfile.c_str(), AT_SYMLINK_FOLLOW) == -1) {
+		perror("linkat");
+		exit(1);
+	}
+
 	fclose(outfp);
 
 	size_t total_bytes = (bytes_for_hashtable + bytes_for_posting_lists + bytes_for_filename_index + bytes_for_filenames);
