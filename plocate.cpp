@@ -1,4 +1,5 @@
 #include "access_rx_cache.h"
+#include "complete_pread.h"
 #include "db.h"
 #include "dprintf.h"
 #include "io_uring_engine.h"

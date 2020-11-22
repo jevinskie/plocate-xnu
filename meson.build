@@ -25,7 +25,7 @@ if cxx.compiles(code, name: 'function multiversioning')
 	add_project_arguments('-DHAS_FUNCTION_MULTIVERSIONING', language: 'cpp')
 endif
 
-executable('plocate', ['plocate.cpp', 'io_uring_engine.cpp', 'turbopfor.cpp', 'parse_trigrams.cpp', 'serializer.cpp', 'access_rx_cache.cpp', 'needle.cpp'],
+executable('plocate', ['plocate.cpp', 'io_uring_engine.cpp', 'turbopfor.cpp', 'parse_trigrams.cpp', 'serializer.cpp', 'access_rx_cache.cpp', 'needle.cpp', 'complete_pread.cpp'],
 	dependencies: [uringdep, zstddep, threaddep, atomicdep],
 	install: true,
 	install_mode: ['rwxr-sr-x', 'root', 'mlocate'])

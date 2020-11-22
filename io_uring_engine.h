@@ -83,8 +83,4 @@ private:
 	static constexpr size_t queue_depth = 256;
 };
 
-// A wrapper around pread() that returns an incomplete read.
-// Always synchronous (no io_uring).
-void complete_pread(int fd, void *ptr, size_t len, off_t offset);
-
 #endif  // !defined(IO_URING_ENGINE_H)
