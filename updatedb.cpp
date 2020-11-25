@@ -49,10 +49,10 @@ any later version.
 #include <stdlib.h>
 #include <string.h>
 #include <string>
+#include <sys/resource.h>
 #include <sys/stat.h>
 #include <sys/time.h>
 #include <sys/types.h>
-#include <sys/resource.h>
 #include <unistd.h>
 #include <utility>
 #include <vector>
@@ -679,7 +679,7 @@ int scan(const string &path, int fd, dev_t parent_dev, dir_time modified, dir_ti
 					fprintf(stderr, "Hint: Try `ulimit -n 131072' or similar.\n");
 				} else {
 					fprintf(stderr, "Hint: Try `ulimit -n %lu' or similar (current limit is %lu).\n",
-						rlim.rlim_cur * 2, rlim.rlim_cur);
+					        rlim.rlim_cur * 2, rlim.rlim_cur);
 				}
 				exit(1);
 			}

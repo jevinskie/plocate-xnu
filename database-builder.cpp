@@ -224,7 +224,8 @@ void Corpus::add_file(string filename, dir_time dt)
 	}
 }
 
-void Corpus::compress_dir_times(size_t allowed_slop) {
+void Corpus::compress_dir_times(size_t allowed_slop)
+{
 	while (dir_times.size() >= allowed_slop) {
 		size_t old_size = dir_times_compressed.size();
 		dir_times_compressed.resize(old_size + 4096);
@@ -313,7 +314,7 @@ string Corpus::get_compressed_dir_times()
 	compress_dir_times(/*allowed_slop=*/0);
 	assert(dir_times.empty());
 
-	for ( ;; ) {
+	for (;;) {
 		size_t old_size = dir_times_compressed.size();
 		dir_times_compressed.resize(old_size + 4096);
 
