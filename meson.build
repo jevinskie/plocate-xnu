@@ -2,7 +2,7 @@ project('plocate', 'cpp', default_options: ['buildtype=debugoptimized','cpp_std=
 
 add_project_arguments('-DGROUPNAME="' + get_option('locategroup') + '"', language: 'cpp')
 add_project_arguments('-DUPDATEDB_CONF="/etc/updatedb.conf"', language: 'cpp')
-add_project_arguments('-DDBFILE="/var/lib/mlocate/plocate.db"', language: 'cpp')
+add_project_arguments('-DDBFILE="/var/lib/plocate/plocate.db"', language: 'cpp')
 add_project_arguments('-DPACKAGE_NAME="plocate"', language: 'cpp')
 add_project_arguments('-DPACKAGE_VERSION="' + meson.project_version() + '"', language: 'cpp')
 add_project_arguments('-DPACKAGE_BUGREPORT="steinar+plocate@gunderson.no"', language: 'cpp')

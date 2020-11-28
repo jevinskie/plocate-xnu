@@ -7,9 +7,9 @@ if [ @PROCESSED_BY_MESON@ = 1 ]; then
 	LOCATEGROUP=@locategroup@
 else
 	SBINDIR=/usr/local/sbin
-	LOCATEGROUP=mlocate
+	LOCATEGROUP=plocate
 fi
 
-$SBINDIR/plocate-build /var/lib/mlocate/mlocate.db /var/lib/mlocate/plocate.db.new
-chgrp $LOCATEGROUP /var/lib/mlocate/plocate.db.new
-mv /var/lib/mlocate/plocate.db.new /var/lib/mlocate/plocate.db
+$SBINDIR/plocate-build /var/lib/mlocate/mlocate.db /var/lib/plocate/plocate.db.new
+chgrp $LOCATEGROUP /var/lib/plocate/plocate.db.new
+mv /var/lib/plocate/plocate.db.new /var/lib/plocate/plocate.db
