@@ -15,8 +15,8 @@ do not have an SSD. Installation is run as:
   meson obj
   cd obj
   ninja
+  sudo addgroup --system plocate
   sudo ninja install
-  sudo addgroup plocate
   sudo systemctl enable plocate-updatedb.timer
 
 To build the database for the first time after install, you can do
