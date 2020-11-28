@@ -24,6 +24,9 @@ struct Header {
 	uint64_t next_zstd_dictionary_offset_bytes;
 	uint64_t conf_block_length_bytes;
 	uint64_t conf_block_offset_bytes;
+
+	// Only if max_version >= 2.
+	bool require_visibility;
 };
 
 struct Trigram {

@@ -12,8 +12,8 @@ class IOUringEngine;
 
 class AccessRXCache {
 public:
-	AccessRXCache(IOUringEngine *engine)
-		: engine(engine) {}
+	AccessRXCache(IOUringEngine *engine, bool require_visibility)
+		: engine(engine), require_visibility(require_visibility) {}
 	void check_access(const char *filename, bool allow_async, std::function<void(bool)> cb);
 
 private:
@@ -25,6 +25,7 @@ private:
 	std::map<std::string, std::vector<PendingStat>> pending_stats;
 	IOUringEngine *engine;
 	std::mutex mu;
+	bool require_visibility;
 };
 
 #endif  // !defined(_ACCESS_RX_CACHE_H)

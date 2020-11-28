@@ -11,6 +11,11 @@ using namespace std;
 
 void AccessRXCache::check_access(const char *filename, bool allow_async, function<void(bool)> cb)
 {
+	if (!require_visibility) {
+		cb(true);
+		return;
+	}
+
 	lock_guard<mutex> lock(mu);
 	if (engine == nullptr || !engine->get_supports_stat()) {
 		allow_async = false;
