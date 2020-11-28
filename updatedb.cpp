@@ -763,6 +763,7 @@ int main(int argc, char **argv)
 	}
 
 	DatabaseBuilder db(conf_output.c_str(), owner, conf_block_size, existing_db.read_next_dictionary());
+	db.set_conf_block(conf_block);
 	Corpus *corpus = db.start_corpus(/*store_dir_times=*/true);
 
 	int root_fd = opendir_noatime(AT_FDCWD, conf_scan_root);

@@ -597,8 +597,8 @@ void DatabaseBuilder::finish_corpus()
 
 	// And the configuration block.
 	if (!conf_block.empty()) {
-		hdr.next_zstd_dictionary_offset_bytes = ftell(outfp);
-		hdr.next_zstd_dictionary_length_bytes = conf_block.size();
+		hdr.conf_block_offset_bytes = ftell(outfp);
+		hdr.conf_block_length_bytes = conf_block.size();
 		fwrite(conf_block.data(), conf_block.size(), 1, outfp);
 	}
 
