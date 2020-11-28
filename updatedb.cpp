@@ -598,6 +598,11 @@ int scan(const string &path, int fd, dev_t parent_dev, dir_time modified, dir_ti
 		// by reading from the database. (We still need to open and stat everything,
 		// though, but that happens in a later step.)
 		entries = move(db_entries);
+		if (conf_verbose) {
+			for (const entry &e : entries) {
+				printf("%s/%s\n", path.c_str(), e.name.c_str());
+			}
+		}
 	} else {
 		dir = fdopendir(fd);  // Takes over ownership of fd.
 		if (dir == nullptr) {
