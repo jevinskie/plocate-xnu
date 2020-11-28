@@ -24,8 +24,8 @@ To build the database for the first time after install, you can do
   sudo updatedb
 
 The initial run of updatedb needs to scan the entire filesystem.
-Subsequent runs of updatedb will be much faster, and create a slightly
-smaller (~5%) database.
+Subsequent runs of updatedb will be much faster, and create a slightly (~5%)
+smaller database.
 
 If you wish to run some tests of the TurboPFor implementation against
 the reference implementation, you can check it out and run as follows:
