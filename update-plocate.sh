@@ -5,11 +5,13 @@ set -e
 if [ @PROCESSED_BY_MESON@ = 1 ]; then
 	SBINDIR=@sbindir@
 	LOCATEGROUP=@locategroup@
+	DBFILE=@dbfile@
 else
 	SBINDIR=/usr/local/sbin
 	LOCATEGROUP=plocate
+	DBFILE=/var/lib/plocate/plocate.db
 fi
 
-$SBINDIR/plocate-build /var/lib/mlocate/mlocate.db /var/lib/plocate/plocate.db.new
-chgrp $LOCATEGROUP /var/lib/plocate/plocate.db.new
-mv /var/lib/plocate/plocate.db.new /var/lib/plocate/plocate.db
+$SBINDIR/plocate-build /var/lib/mlocate/mlocate.db $DBFILE.new
+chgrp $LOCATEGROUP $DBFILE.new
+mv $DBFILE.new $DBFILE
