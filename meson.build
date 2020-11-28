@@ -44,7 +44,7 @@ executable('updatedb', ['updatedb.cpp', 'database-builder.cpp', 'conf.cpp', 'lib
 
 conf_data = configuration_data()
 conf_data.set('PROCESSED_BY_MESON', '1')
-conf_data.set('sbindir', get_option('prefix') + '/' + get_option('sbindir'))
+conf_data.set('sbindir', join_paths(get_option('prefix'), get_option('sbindir')))
 conf_data.set('locategroup', get_option('locategroup'))
 update_script = configure_file(input: 'update-plocate.sh',
                output: 'update-plocate.sh',
