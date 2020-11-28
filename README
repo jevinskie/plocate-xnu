@@ -16,10 +16,11 @@ do not have an SSD. Installation is run as:
   cd obj
   ninja
   sudo ninja install
+  sudo addgroup plocate
+  sudo systemctl enable plocate-updatedb.timer
 
 To build the database for the first time after install, you can do
 
-  sudo addgroup mlocate
   sudo updatedb
 
 The initial run of updatedb needs to scan the entire filesystem.
