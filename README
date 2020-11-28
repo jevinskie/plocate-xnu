@@ -1,16 +1,16 @@
-plocate is a locate based on posting lists, consuming mlocate's database
-ahead-of-time and making a much faster (and smaller) index out of it.
-It supports most mlocate options; see --help or the man page (man -l plocate.1)
-for more information.
+plocate is a locate based on posting lists. Compared to mlocate,
+it is much faster, and its index is much smaller. updatedb speed
+is similar (or you can convert mlocate's index to plocate format
+using plocate-build). It supports most mlocate options;
+see --help or the man page (man -l plocate.1) for more information.
 
-plocate is in beta. The file format is stable, but may still change
-(if so, plocate will notify you itself that you need to rerun
-plocate-build). To build and install, you will need a C++17 compiler
-and a development package for Zstd (https://facebook.github.io/zstd/).
-liburing (https://github.com/axboe/liburing) and a kernel supporting
-io_uring (Linux 5.1 or newer) is optional, but strongly recommended
-for best performance, especially if you do not have an SSD. Installation
-is run as:
+The file format may still change (if so, plocate will notify you itself
+that you need to rerun plocate-build or updatedb). To build and install,
+you will need a C++17 compiler and a development package for Zstd
+(https://facebook.github.io/zstd/). liburing (https://github.com/axboe/liburing)
+and a kernel supporting io_uring (Linux 5.1 or newer) is optional,
+but strongly recommended for best performance, especially if you
+do not have an SSD. Installation is run as:
 
   meson obj
   cd obj
@@ -19,10 +19,12 @@ is run as:
 
 To build the database for the first time after install, you can do
 
-  sudo /etc/cron.daily/plocate
+  sudo addgroup mlocate
+  sudo updatedb
 
-or equivalently, run the update-plocate.sh script from the source
-directory as root (it is the same file installed to /etc/cron.d).
+The initial run of updatedb needs to scan the entire filesystem.
+Subsequent runs of updatedb will be much faster, and create a slightly
+smaller (~5%) database.
 
 If you wish to run some tests of the TurboPFor implementation against
 the reference implementation, you can check it out and run as follows:
