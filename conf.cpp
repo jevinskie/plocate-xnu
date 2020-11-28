@@ -338,7 +338,7 @@ static void
 help(void)
 {
 	printf(_("Usage: updatedb [OPTION]...\n"
-	         "Update a mlocate database.\n"
+	         "Update a plocate database.\n"
 	         "\n"
 	         "  -f, --add-prunefs FS           omit also FS\n"
 	         "  -n, --add-prunenames NAMES     omit also NAMES\n"
