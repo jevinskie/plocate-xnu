@@ -34,7 +34,7 @@ endif
 executable('plocate', ['plocate.cpp', 'io_uring_engine.cpp', 'turbopfor.cpp', 'parse_trigrams.cpp', 'serializer.cpp', 'access_rx_cache.cpp', 'needle.cpp', 'complete_pread.cpp'],
 	dependencies: [uringdep, zstddep, threaddep, atomicdep],
 	install: true,
-	install_mode: ['rwxr-sr-x', 'root', 'plocate'])
+	install_mode: ['rwxr-sr-x', 'root', get_option('locategroup')])
 executable('plocate-build', ['plocate-build.cpp', 'database-builder.cpp'],
 	dependencies: [zstddep],
 	install: true,
