@@ -53,7 +53,7 @@ update_script = configure_file(input: 'update-plocate.sh',
                output: 'update-plocate.sh',
                configuration: conf_data)
 
-meson.add_install_script('mkdir', '-p', dbdir)
+meson.add_install_script('mkdir.sh', dbdir)
 
 if get_option('install_cron')
 	install_data(update_script,
