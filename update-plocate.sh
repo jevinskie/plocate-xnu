@@ -4,7 +4,7 @@ set -e
 
 if [ @PROCESSED_BY_MESON@ = 1 ]; then
 	SBINDIR=@sbindir@
-	LOCATEGROUP=@locategroup@
+	LOCATEGROUP=@groupname@
 	DBFILE=@dbfile@
 else
 	SBINDIR=/usr/local/sbin

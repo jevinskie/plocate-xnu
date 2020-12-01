@@ -47,8 +47,9 @@ executable('updatedb', ['updatedb.cpp', 'database-builder.cpp', 'conf.cpp', 'lib
 conf_data = configuration_data()
 conf_data.set('PROCESSED_BY_MESON', '1')
 conf_data.set('sbindir', join_paths(get_option('prefix'), get_option('sbindir')))
-conf_data.set('locategroup', get_option('locategroup'))
+conf_data.set('groupname', get_option('locategroup'))
 conf_data.set('dbfile', dbfile)
+conf_data.set('updatedb_conf', '/etc/updatedb.conf')
 update_script = configure_file(input: 'update-plocate.sh',
                output: 'update-plocate.sh',
                configuration: conf_data)
@@ -62,6 +63,16 @@ if get_option('install_cron')
 endif
 install_man('plocate.1')
 install_man('plocate-build.8')
+
+updatedb_man = configure_file(input: 'updatedb.8.in',
+               output: 'updatedb.8',
+               configuration: conf_data)
+install_man(updatedb_man)
+
+updatedb_conf_man = configure_file(input: 'updatedb.conf.5.in',
+               output: 'updatedb.conf.5',
+               configuration: conf_data)
+install_man(updatedb_conf_man)
 
 if get_option('install_systemd')
 	systemd = dependency('systemd', required: false)
