@@ -1,3 +1,22 @@
+plocate 1.1.0, December 2nd, 2020
+
+  - Include a native updatedb, based on code and man pages from mlocate's
+    updatedb (but heavily tweaked and reworked). This removes the dependency
+    on mlocate's database, at the expense of 1% larger plocate database.
+    plocate-build does not write the needed timestamps, so the first upgrade
+    from mlocate to native plocate requires a full rescan. Subsequent rescans
+    will be about as fast as updatedb.mlocate + plocate-build. plocate-build
+    is now deprecated.
+
+  - The path name now defaults to /var/lib/plocate, and the group name now
+    defaults to plocate. Both can be changed at configure time.
+
+  - Databases are now written near-atomically. An aborted updatedb or
+    plocate-build will never leave a stray file.
+
+  - Escape filenames with backticks in them.
+
+
 plocate 1.0.7, October 31st, 2020
 
   - Fix an infinite loop when encountering invalid UTF-8 in file names.
