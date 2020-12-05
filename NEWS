@@ -1,3 +1,8 @@
+plocate 1.1.1, December 5th, 2020
+
+  - Fix an issue where the database could be built with the wrong
+    check_visibility flag.
+
 plocate 1.1.0, December 2nd, 2020
 
   - Include a native updatedb, based on code and man pages from mlocate's
