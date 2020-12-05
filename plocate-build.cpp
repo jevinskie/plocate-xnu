@@ -166,7 +166,7 @@ void do_build(const char *infile, const char *outfile, int block_size, bool plai
 	}
 	string dictionary = builder.train(1024);
 
-	DatabaseBuilder db(outfile, /*owner=*/-1, block_size, dictionary);
+	DatabaseBuilder db(outfile, /*owner=*/-1, block_size, dictionary, /*check_visibility=*/true);
 	Corpus *corpus = db.start_corpus(/*store_dir_times=*/false);
 	if (plaintext) {
 		read_plaintext(infp, corpus);

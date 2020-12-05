@@ -417,7 +417,7 @@ unique_ptr<Trigram[]> create_hashtable(Corpus &corpus, const vector<uint32_t> &a
 	return ht;
 }
 
-DatabaseBuilder::DatabaseBuilder(const char *outfile, gid_t owner, int block_size, string dictionary)
+DatabaseBuilder::DatabaseBuilder(const char *outfile, gid_t owner, int block_size, string dictionary, bool check_visibility)
 	: outfile(outfile), block_size(block_size)
 {
 	umask(0027);
@@ -456,6 +456,7 @@ DatabaseBuilder::DatabaseBuilder(const char *outfile, gid_t owner, int block_siz
 	hdr.max_version = 2;
 	hdr.filename_index_offset_bytes = -1;
 	hdr.zstd_dictionary_length_bytes = -1;
+	hdr.check_visibility = check_visibility;
 	fwrite(&hdr, sizeof(hdr), 1, outfp);
 
 	if (dictionary.empty()) {

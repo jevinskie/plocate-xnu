@@ -26,7 +26,7 @@ struct Header {
 	uint64_t conf_block_offset_bytes;
 
 	// Only if max_version >= 2.
-	bool require_visibility;
+	bool check_visibility;
 };
 
 struct Trigram {

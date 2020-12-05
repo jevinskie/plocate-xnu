@@ -101,7 +101,7 @@ private:
 
 class DatabaseBuilder {
 public:
-	DatabaseBuilder(const char *outfile, gid_t owner, int block_size, std::string dictionary);
+	DatabaseBuilder(const char *outfile, gid_t owner, int block_size, std::string dictionary, bool check_visibility);
 	Corpus *start_corpus(bool store_dir_times);
 	void set_next_dictionary(std::string next_dictionary);
 	void set_conf_block(std::string conf_block);

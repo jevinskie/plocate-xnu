@@ -107,7 +107,7 @@ Corpus::Corpus(int fd, IOUringEngine *engine)
 	}
 	if (hdr.max_version < 2) {
 		// This too. (We ignore the other max_version 2 fields.)
-		hdr.require_visibility = true;
+		hdr.check_visibility = true;
 	}
 }
 
@@ -234,7 +234,7 @@ void scan_file_block(const vector<Needle> &needles, string_view compressed,
 size_t scan_docids(const vector<Needle> &needles, const vector<uint32_t> &docids, const Corpus &corpus, IOUringEngine *engine)
 {
 	Serializer docids_in_order;
-	AccessRXCache access_rx_cache(engine, corpus.get_hdr().require_visibility);
+	AccessRXCache access_rx_cache(engine, corpus.get_hdr().check_visibility);
 	atomic<uint64_t> matched{ 0 };
 	for (size_t i = 0; i < docids.size(); ++i) {
 		uint32_t docid = docids[i];
@@ -310,7 +310,7 @@ uint64_t scan_all_docids(const vector<Needle> &needles, int fd, const Corpus &co
 		}
 	}
 
-	AccessRXCache access_rx_cache(nullptr, corpus.get_hdr().require_visibility);
+	AccessRXCache access_rx_cache(nullptr, corpus.get_hdr().check_visibility);
 	Serializer serializer;
 	uint32_t num_blocks = corpus.get_num_filename_blocks();
 	unique_ptr<uint64_t[]> offsets(new uint64_t[num_blocks + 1]);

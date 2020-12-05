@@ -11,7 +11,7 @@ using namespace std;
 
 void AccessRXCache::check_access(const char *filename, bool allow_async, function<void(bool)> cb)
 {
-	if (!require_visibility) {
+	if (!check_visibility) {
 		cb(true);
 		return;
 	}

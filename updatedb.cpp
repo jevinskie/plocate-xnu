@@ -767,7 +767,7 @@ int main(int argc, char **argv)
 		owner = grp->gr_gid;
 	}
 
-	DatabaseBuilder db(conf_output.c_str(), owner, conf_block_size, existing_db.read_next_dictionary());
+	DatabaseBuilder db(conf_output.c_str(), owner, conf_block_size, existing_db.read_next_dictionary(), conf_check_visibility);
 	db.set_conf_block(conf_block);
 	Corpus *corpus = db.start_corpus(/*store_dir_times=*/true);
 
