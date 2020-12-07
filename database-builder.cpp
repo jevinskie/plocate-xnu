@@ -163,7 +163,7 @@ string DictionaryBuilder::train(size_t buf_size)
 	string buf;
 	buf.resize(buf_size);
 	size_t ret = ZDICT_trainFromBuffer(&buf[0], buf_size, dictionary_buf.data(), lengths.data(), lengths.size());
-	if (ret == size_t(-1)) {
+	if (ZDICT_isError(ret)) {
 		return "";
 	}
 	dprintf("Sampled %zu bytes in %zu blocks, built a dictionary of size %zu\n", dictionary_buf.size(), lengths.size(), ret);
