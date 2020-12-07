@@ -11,4 +11,3 @@ IOSchedulingClass=idle
 PrivateTmp=true
 PrivateDevices=true
 PrivateNetwork=true
-ProtectSystem=full
