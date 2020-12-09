@@ -4,7 +4,7 @@ ConditionACPower=true
 
 [Service]
 Type=oneshot
-ExecStart=@sbindir@/updatedb
+ExecStart=@sbindir@/@updatedb_progname@
 LimitNOFILE=131072
 IOSchedulingClass=idle
 

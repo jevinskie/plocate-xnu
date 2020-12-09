@@ -39,7 +39,8 @@ executable('plocate-build', ['plocate-build.cpp', 'database-builder.cpp'],
 	dependencies: [zstddep],
 	install: true,
 	install_dir: get_option('sbindir'))
-executable('updatedb', ['updatedb.cpp', 'database-builder.cpp', 'conf.cpp', 'lib.cpp', 'bind-mount.cpp', 'complete_pread.cpp'],
+updatedb_progname = get_option('updatedb_progname')
+executable(updatedb_progname, ['updatedb.cpp', 'database-builder.cpp', 'conf.cpp', 'lib.cpp', 'bind-mount.cpp', 'complete_pread.cpp'],
 	dependencies: [zstddep, threaddep],
 	install: true,
 	install_dir: get_option('sbindir'))
@@ -50,6 +51,7 @@ conf_data.set('sbindir', join_paths(get_option('prefix'), get_option('sbindir'))
 conf_data.set('groupname', get_option('locategroup'))
 conf_data.set('dbfile', dbfile)
 conf_data.set('updatedb_conf', '/etc/updatedb.conf')
+conf_data.set('updatedb_progname', updatedb_progname)
 update_script = configure_file(input: 'update-plocate.sh',
                output: 'update-plocate.sh',
                configuration: conf_data)
@@ -65,7 +67,7 @@ install_man('plocate.1')
 install_man('plocate-build.8')
 
 updatedb_man = configure_file(input: 'updatedb.8.in',
-               output: 'updatedb.8',
+               output: updatedb_progname + '.8',
                configuration: conf_data)
 install_man(updatedb_man)
 
