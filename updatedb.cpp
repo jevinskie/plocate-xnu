@@ -742,6 +742,15 @@ int main(int argc, char **argv)
 	// and can set whatever we want). 128k should be ample for most setups.
 	rlimit rlim;
 	if (getrlimit(RLIMIT_NOFILE, &rlim) != -1) {
+		// Even root cannot increase rlim_cur beyond rlim_max,
+		// so we need to try to increase rlim_max first.
+		// Ignore errors, though.
+		if (rlim.rlim_max < 131072) {
+			rlim.rlim_max = 131072;
+			setrlimit(RLIMIT_NOFILE, &rlim);
+			getrlimit(RLIMIT_NOFILE, &rlim);
+		}
+
 		rlim_t wanted = std::max<rlim_t>(rlim.rlim_cur, 131072);
 		rlim.rlim_cur = std::min<rlim_t>(wanted, rlim.rlim_max);
 		setrlimit(RLIMIT_NOFILE, &rlim);  // Ignore errors.
