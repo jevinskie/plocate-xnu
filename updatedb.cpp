@@ -92,7 +92,11 @@ int opendir_noatime(int dirfd, const char *path)
 	static bool noatime_failed = false;
 
 	if (!noatime_failed) {
+#ifdef O_NOATIME
 		int fd = openat(dirfd, path, O_RDONLY | O_DIRECTORY | O_NOATIME);
+#else
+		int fd = openat(dirfd, path, O_RDONLY | O_DIRECTORY);
+#endif
 		if (fd != -1) {
 			return fd;
 		} else if (errno == EPERM) {
