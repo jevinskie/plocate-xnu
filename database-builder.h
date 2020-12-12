@@ -4,6 +4,7 @@
 #include "db.h"
 
 #include <chrono>
+#include <fcntl.h>
 #include <memory>
 #include <random>
 #include <stddef.h>
@@ -110,6 +111,9 @@ public:
 private:
 	FILE *outfp;
 	std::string outfile;
+#ifndef O_TMPFILE
+	std::string temp_filename;
+#endif
 	Header hdr;
 	const int block_size;
 	std::chrono::steady_clock::time_point corpus_start;
