@@ -20,8 +20,6 @@ plocate parts and modifications are licensed under the GPLv2 or, at your option,
 any later version.
 */
 
-using namespace std;
-
 #include "lib.h"
 
 #include "db.h"
@@ -38,6 +36,8 @@ using namespace std;
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+
+using namespace std;
 
 /* Compare two path names using the database directory order. This is not
    exactly strcmp () order: "a" < "a.b", so "a/z" < "a.b". */
