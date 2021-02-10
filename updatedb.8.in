@@ -157,7 +157,7 @@ Write information about the version and license of
 on standard output and exit successfully.
 
 .SH EXAMPLES
-To create a private plocate database as an user other than \fBroot\fR,
+To create a private plocate database as a user other than \fBroot\fR,
 run
 .RS
 .B updatedb -l 0 \-o
