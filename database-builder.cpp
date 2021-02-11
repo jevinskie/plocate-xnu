@@ -45,6 +45,7 @@ static inline uint32_t read_trigram(const string_view s, size_t start)
 class PostingListBuilder {
 public:
 	inline void add_docid(uint32_t docid);
+	inline void add_first_docid(uint32_t docid);
 	void finish();
 
 	string encoded;
@@ -66,13 +67,7 @@ void PostingListBuilder::add_docid(uint32_t docid)
 		return;
 	}
 
-	if (num_docids == 0) {
-		// Very first docid.
-		write_header(docid);
-		++num_docids;
-		last_docid = docid;
-		return;
-	}
+	assert(num_docids != 0);
 
 	pending_deltas.push_back(docid - last_docid - 1);
 	last_docid = docid;
@@ -81,6 +76,13 @@ void PostingListBuilder::add_docid(uint32_t docid)
 		pending_deltas.clear();
 	}
 	++num_docids;
+}
+
+void PostingListBuilder::add_first_docid(uint32_t docid)
+{
+	write_header(docid);
+	++num_docids;
+	last_docid = docid;
 }
 
 void PostingListBuilder::finish()
@@ -192,10 +194,17 @@ public:
 	size_t num_files_seen() const override { return num_files; }
 	PostingListBuilder &get_pl_builder(uint32_t trgm)
 	{
+		return *invindex[trgm];
+	}
+
+	void add_docid(uint32_t trgm, uint32_t docid)
+	{
 		if (invindex[trgm] == nullptr) {
 			invindex[trgm] = new PostingListBuilder;
+			invindex[trgm]->add_first_docid(docid);
+		} else {
+			invindex[trgm]->add_docid(docid);
 		}
-		return *invindex[trgm];
 	}
 
 	size_t num_trigrams() const;
@@ -306,7 +315,7 @@ void EncodingCorpus::flush_block()
 		if (s.size() >= 3) {
 			for (size_t j = 0; j < s.size() - 2; ++j) {
 				uint32_t trgm = read_trigram(s, j);
-				get_pl_builder(trgm).add_docid(docid);
+				add_docid(trgm, docid);
 			}
 		}
 		ptr += s.size() + 1;
