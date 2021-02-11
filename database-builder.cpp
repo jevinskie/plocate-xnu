@@ -48,7 +48,7 @@ public:
 	inline void add_first_docid(uint32_t docid);
 	void finish();
 
-	string encoded;
+	vector<unsigned char> encoded;
 	size_t num_docids = 0;
 
 private:
@@ -96,7 +96,7 @@ void PostingListBuilder::finish()
 	// No interleaving for partial blocks.
 	unsigned char buf[P4NENC_BOUND(128)];
 	unsigned char *end = encode_pfor_single_block<128>(pending_deltas.data(), pending_deltas.size(), /*interleaved=*/false, buf);
-	encoded.append(reinterpret_cast<char *>(buf), reinterpret_cast<char *>(end));
+	encoded.insert(encoded.end(), buf, end);
 }
 
 void PostingListBuilder::append_block()
@@ -104,14 +104,14 @@ void PostingListBuilder::append_block()
 	unsigned char buf[P4NENC_BOUND(128)];
 	assert(pending_deltas.size() == 128);
 	unsigned char *end = encode_pfor_single_block<128>(pending_deltas.data(), 128, /*interleaved=*/true, buf);
-	encoded.append(reinterpret_cast<char *>(buf), reinterpret_cast<char *>(end));
+	encoded.insert(encoded.end(), buf, end);
 }
 
 void PostingListBuilder::write_header(uint32_t docid)
 {
 	unsigned char buf[P4NENC_BOUND(1)];
 	unsigned char *end = write_baseval(docid, buf);
-	encoded.append(reinterpret_cast<char *>(buf), end - buf);
+	encoded.insert(encoded.end(), buf, end);
 }
 
 void DictionaryBuilder::add_file(string filename, dir_time)
@@ -617,7 +617,7 @@ void DatabaseBuilder::finish_corpus()
 			continue;
 		}
 
-		const string &encoded = corpus->get_pl_builder(hashtable[i].trgm).encoded;
+		const vector<unsigned char> &encoded = corpus->get_pl_builder(hashtable[i].trgm).encoded;
 		offset += encoded.size();
 	}
 
@@ -631,7 +631,7 @@ void DatabaseBuilder::finish_corpus()
 		if (hashtable[i].num_docids == 0) {
 			continue;
 		}
-		const string &encoded = corpus->get_pl_builder(hashtable[i].trgm).encoded;
+		const vector<unsigned char> &encoded = corpus->get_pl_builder(hashtable[i].trgm).encoded;
 		fwrite(encoded.data(), encoded.size(), 1, outfp);
 	}
 
