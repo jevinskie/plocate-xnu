@@ -191,7 +191,14 @@ public:
 		return invindex[trgm] != nullptr;
 	}
 	size_t num_files_seen() const override { return num_files; }
-	PostingListBuilder &get_pl_builder(uint32_t trgm);
+	PostingListBuilder &get_pl_builder(uint32_t trgm)
+	{
+		if (invindex[trgm] == nullptr) {
+			invindex[trgm] = new PostingListBuilder;
+		}
+		return *invindex[trgm];
+	}
+
 	size_t num_trigrams() const;
 	std::string get_compressed_dir_times();
 
@@ -227,14 +234,6 @@ EncodingCorpus::~EncodingCorpus()
 	for (unsigned i = 0; i < NUM_TRIGRAMS; ++i) {
 		delete invindex[i];
 	}
-}
-
-PostingListBuilder &EncodingCorpus::get_pl_builder(uint32_t trgm)
-{
-	if (invindex[trgm] == nullptr) {
-		invindex[trgm] = new PostingListBuilder;
-	}
-	return *invindex[trgm];
 }
 
 void EncodingCorpus::add_file(string filename, dir_time dt)
