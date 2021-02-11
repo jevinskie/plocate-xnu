@@ -56,7 +56,7 @@ private:
 
 	vector<uint32_t> pending_deltas;
 
-	uint32_t last_block_end, last_docid = -1;
+	uint32_t last_docid = -1;
 };
 
 void PostingListBuilder::add_docid(uint32_t docid)
@@ -70,7 +70,7 @@ void PostingListBuilder::add_docid(uint32_t docid)
 		// Very first docid.
 		write_header(docid);
 		++num_docids;
-		last_block_end = last_docid = docid;
+		last_docid = docid;
 		return;
 	}
 
@@ -79,7 +79,6 @@ void PostingListBuilder::add_docid(uint32_t docid)
 	if (pending_deltas.size() == 128) {
 		append_block();
 		pending_deltas.clear();
-		last_block_end = docid;
 	}
 	++num_docids;
 }
