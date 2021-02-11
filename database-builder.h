@@ -41,6 +41,9 @@ public:
 	virtual void add_file(std::string filename, dir_time dt) = 0;
 	virtual void flush_block() = 0;
 	virtual void finish() { flush_block(); }
+
+	// EncodingCorpus only.
+	virtual size_t num_files_seen() const { return -1; }
 };
 
 class DictionaryBuilder : public DatabaseReceiver {
@@ -65,45 +68,12 @@ private:
 	std::vector<size_t> lengths;
 };
 
-class Corpus : public DatabaseReceiver {
-public:
-	Corpus(FILE *outfp, size_t block_size, ZSTD_CDict *cdict, bool store_dir_times);
-	~Corpus();
-
-	void add_file(std::string filename, dir_time dt) override;
-	void flush_block() override;
-	void finish() override;
-
-	std::vector<uint64_t> filename_blocks;
-	size_t num_files = 0, num_files_in_block = 0, num_blocks = 0;
-	bool seen_trigram(uint32_t trgm)
-	{
-		return invindex[trgm] != nullptr;
-	}
-	PostingListBuilder &get_pl_builder(uint32_t trgm);
-	size_t num_trigrams() const;
-	std::string get_compressed_dir_times();
-
-private:
-	void compress_dir_times(size_t allowed_slop);
-
-	std::unique_ptr<PostingListBuilder *[]> invindex;
-	FILE *outfp;
-	std::string current_block;
-	std::string tempbuf;
-	const size_t block_size;
-	const bool store_dir_times;
-	ZSTD_CDict *cdict;
-
-	ZSTD_CStream *dir_time_ctx = nullptr;
-	std::string dir_times;  // Buffer of still-uncompressed data.
-	std::string dir_times_compressed;
-};
+class EncodingCorpus;
 
 class DatabaseBuilder {
 public:
 	DatabaseBuilder(const char *outfile, gid_t owner, int block_size, std::string dictionary, bool check_visibility);
-	Corpus *start_corpus(bool store_dir_times);
+	DatabaseReceiver *start_corpus(bool store_dir_times);
 	void set_next_dictionary(std::string next_dictionary);
 	void set_conf_block(std::string conf_block);
 	void finish_corpus();
@@ -117,7 +87,7 @@ private:
 	Header hdr;
 	const int block_size;
 	std::chrono::steady_clock::time_point corpus_start;
-	Corpus *corpus = nullptr;
+	EncodingCorpus *corpus = nullptr;
 	ZSTD_CDict *cdict = nullptr;
 	std::string next_dictionary, conf_block;
 };

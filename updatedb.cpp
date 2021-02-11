@@ -530,7 +530,7 @@ string ExistingDB::read_next_dictionary() const
 // “parent_dev” must be the device of the parent directory of “path”.
 //
 // Takes ownership of fd.
-int scan(const string &path, int fd, dev_t parent_dev, dir_time modified, dir_time db_modified, ExistingDB *existing_db, Corpus *corpus, DictionaryBuilder *dict_builder)
+int scan(const string &path, int fd, dev_t parent_dev, dir_time modified, dir_time db_modified, ExistingDB *existing_db, DatabaseReceiver *corpus, DictionaryBuilder *dict_builder)
 {
 	if (string_list_contains_dir_path(&conf_prunepaths, &conf_prunepaths_index, path)) {
 		if (conf_debug_pruning) {
@@ -782,7 +782,7 @@ int main(int argc, char **argv)
 
 	DatabaseBuilder db(conf_output.c_str(), owner, conf_block_size, existing_db.read_next_dictionary(), conf_check_visibility);
 	db.set_conf_block(conf_block);
-	Corpus *corpus = db.start_corpus(/*store_dir_times=*/true);
+	DatabaseReceiver *corpus = db.start_corpus(/*store_dir_times=*/true);
 
 	int root_fd = opendir_noatime(AT_FDCWD, conf_scan_root);
 	if (root_fd == -1) {

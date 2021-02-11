@@ -175,7 +175,44 @@ string DictionaryBuilder::train(size_t buf_size)
 	return buf;
 }
 
-Corpus::Corpus(FILE *outfp, size_t block_size, ZSTD_CDict *cdict, bool store_dir_times)
+class EncodingCorpus : public DatabaseReceiver {
+public:
+	EncodingCorpus(FILE *outfp, size_t block_size, ZSTD_CDict *cdict, bool store_dir_times);
+	~EncodingCorpus();
+
+	void add_file(std::string filename, dir_time dt) override;
+	void flush_block() override;
+	void finish() override;
+
+	std::vector<uint64_t> filename_blocks;
+	size_t num_files = 0, num_files_in_block = 0, num_blocks = 0;
+	bool seen_trigram(uint32_t trgm)
+	{
+		return invindex[trgm] != nullptr;
+	}
+	size_t num_files_seen() const override { return num_files; }
+	PostingListBuilder &get_pl_builder(uint32_t trgm);
+	size_t num_trigrams() const;
+	std::string get_compressed_dir_times();
+
+private:
+	void compress_dir_times(size_t allowed_slop);
+
+	std::unique_ptr<PostingListBuilder *[]> invindex;
+	FILE *outfp;
+	std::string current_block;
+	std::string tempbuf;
+	const size_t block_size;
+	const bool store_dir_times;
+	ZSTD_CDict *cdict;
+
+	ZSTD_CStream *dir_time_ctx = nullptr;
+	std::string dir_times;  // Buffer of still-uncompressed data.
+	std::string dir_times_compressed;
+};
+
+
+EncodingCorpus::EncodingCorpus(FILE *outfp, size_t block_size, ZSTD_CDict *cdict, bool store_dir_times)
 	: invindex(new PostingListBuilder *[NUM_TRIGRAMS]), outfp(outfp), block_size(block_size), store_dir_times(store_dir_times), cdict(cdict)
 {
 	fill(invindex.get(), invindex.get() + NUM_TRIGRAMS, nullptr);
@@ -185,14 +222,14 @@ Corpus::Corpus(FILE *outfp, size_t block_size, ZSTD_CDict *cdict, bool store_dir
 	}
 }
 
-Corpus::~Corpus()
+EncodingCorpus::~EncodingCorpus()
 {
 	for (unsigned i = 0; i < NUM_TRIGRAMS; ++i) {
 		delete invindex[i];
 	}
 }
 
-PostingListBuilder &Corpus::get_pl_builder(uint32_t trgm)
+PostingListBuilder &EncodingCorpus::get_pl_builder(uint32_t trgm)
 {
 	if (invindex[trgm] == nullptr) {
 		invindex[trgm] = new PostingListBuilder;
@@ -200,7 +237,7 @@ PostingListBuilder &Corpus::get_pl_builder(uint32_t trgm)
 	return *invindex[trgm];
 }
 
-void Corpus::add_file(string filename, dir_time dt)
+void EncodingCorpus::add_file(string filename, dir_time dt)
 {
 	++num_files;
 	if (!current_block.empty()) {
@@ -224,7 +261,7 @@ void Corpus::add_file(string filename, dir_time dt)
 	}
 }
 
-void Corpus::compress_dir_times(size_t allowed_slop)
+void EncodingCorpus::compress_dir_times(size_t allowed_slop)
 {
 	while (dir_times.size() >= allowed_slop) {
 		size_t old_size = dir_times_compressed.size();
@@ -256,7 +293,7 @@ void Corpus::compress_dir_times(size_t allowed_slop)
 	}
 }
 
-void Corpus::flush_block()
+void EncodingCorpus::flush_block()
 {
 	if (current_block.empty()) {
 		return;
@@ -290,12 +327,12 @@ void Corpus::flush_block()
 	++num_blocks;
 }
 
-void Corpus::finish()
+void EncodingCorpus::finish()
 {
 	flush_block();
 }
 
-size_t Corpus::num_trigrams() const
+size_t EncodingCorpus::num_trigrams() const
 {
 	size_t num = 0;
 	for (unsigned trgm = 0; trgm < NUM_TRIGRAMS; ++trgm) {
@@ -306,7 +343,7 @@ size_t Corpus::num_trigrams() const
 	return num;
 }
 
-string Corpus::get_compressed_dir_times()
+string EncodingCorpus::get_compressed_dir_times()
 {
 	if (!store_dir_times) {
 		return "";
@@ -385,7 +422,7 @@ uint32_t next_prime(uint32_t x)
 	return x;
 }
 
-unique_ptr<Trigram[]> create_hashtable(Corpus &corpus, const vector<uint32_t> &all_trigrams, uint32_t ht_size, uint32_t num_overflow_slots)
+unique_ptr<Trigram[]> create_hashtable(EncodingCorpus &corpus, const vector<uint32_t> &all_trigrams, uint32_t ht_size, uint32_t num_overflow_slots)
 {
 	unique_ptr<Trigram[]> ht(new Trigram[ht_size + num_overflow_slots + 1]);  // 1 for the sentinel element at the end.
 	for (unsigned i = 0; i < ht_size + num_overflow_slots + 1; ++i) {
@@ -490,10 +527,10 @@ DatabaseBuilder::DatabaseBuilder(const char *outfile, gid_t owner, int block_siz
 	hdr.conf_block_offset_bytes = 0;
 }
 
-Corpus *DatabaseBuilder::start_corpus(bool store_dir_times)
+DatabaseReceiver *DatabaseBuilder::start_corpus(bool store_dir_times)
 {
 	corpus_start = steady_clock::now();
-	corpus = new Corpus(outfp, block_size, cdict, store_dir_times);
+	corpus = new EncodingCorpus(outfp, block_size, cdict, store_dir_times);
 	return corpus;
 }
 
