@@ -5,6 +5,9 @@
 
 #include <algorithm>
 #include <assert.h>
+#ifdef HAS_ENDIAN_H
+#include <endian.h>
+#endif
 #include <fcntl.h>
 #include <string.h>
 #include <string_view>
@@ -26,20 +29,14 @@ constexpr unsigned num_overflow_slots = 16;
 
 string zstd_compress(const string &src, ZSTD_CDict *cdict, string *tempbuf);
 
-static inline uint32_t read_unigram(const string_view s, size_t idx)
-{
-	if (idx < s.size()) {
-		return (unsigned char)s[idx];
-	} else {
-		return 0;
-	}
-}
-
+// NOTE: Will read one byte past the end of the trigram, but it's OK,
+// since we always call it from contexts where there's a terminating zero byte.
 static inline uint32_t read_trigram(const string_view s, size_t start)
 {
-	return read_unigram(s, start) |
-		(read_unigram(s, start + 1) << 8) |
-		(read_unigram(s, start + 2) << 16);
+	uint32_t trgm;
+	memcpy(&trgm, s.data() + start, sizeof(trgm));
+	trgm = le32toh(trgm);
+	return trgm & 0xffffff;
 }
 
 class PostingListBuilder {
