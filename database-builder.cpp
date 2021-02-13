@@ -29,16 +29,6 @@ constexpr unsigned num_overflow_slots = 16;
 
 string zstd_compress(const string &src, ZSTD_CDict *cdict, string *tempbuf);
 
-// NOTE: Will read one byte past the end of the trigram, but it's OK,
-// since we always call it from contexts where there's a terminating zero byte.
-static inline uint32_t read_trigram(const string_view s, size_t start)
-{
-	uint32_t trgm;
-	memcpy(&trgm, s.data() + start, sizeof(trgm));
-	trgm = le32toh(trgm);
-	return trgm & 0xffffff;
-}
-
 class PostingListBuilder {
 public:
 	inline void add_docid(uint32_t docid);
@@ -313,15 +303,36 @@ void EncodingCorpus::flush_block()
 
 	// Create trigrams.
 	const char *ptr = current_block.c_str();
-	while (ptr < current_block.c_str() + current_block.size()) {
-		string_view s(ptr);
-		if (s.size() >= 3) {
-			for (size_t j = 0; j < s.size() - 2; ++j) {
-				uint32_t trgm = read_trigram(s, j);
-				add_docid(trgm, docid);
+	const char *end = ptr + current_block.size();
+	while (ptr < end - 3) {  // Must be at least one filename left, that's at least three bytes.
+		if (ptr[0] == '\0') {
+			// This filename is zero bytes, so skip it (and the zero terminator).
+			++ptr;
+			continue;
+		} else if (ptr[1] == '\0') {
+			// This filename is one byte, so skip it (and the zero terminator).
+			ptr += 2;
+			continue;
+		} else if (ptr[2] == '\0') {
+			// This filename is two bytes, so skip it (and the zero terminator).
+			ptr += 3;
+			continue;
+		}
+		for ( ;; ) {
+			// NOTE: Will read one byte past the end of the trigram, but it's OK,
+			// since we always call it from contexts where there's a terminating zero byte.
+			uint32_t trgm;
+			memcpy(&trgm, ptr, sizeof(trgm));
+			++ptr;
+			trgm = le32toh(trgm);
+			add_docid(trgm & 0xffffff, docid);
+			if (trgm <= 0xffffff) {
+				// Terminating zero byte, so we're done with this filename.
+				// Skip the remaining two bytes, and the zero terminator.
+				ptr += 3;
+				break;
 			}
 		}
-		ptr += s.size() + 1;
 	}
 
 	// Compress and add the filename block.
