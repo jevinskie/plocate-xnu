@@ -46,7 +46,11 @@ public:
 	void finish();
 
 	vector<unsigned char> encoded;
-	size_t num_docids = 0;
+	size_t get_num_docids() const {
+		// Updated only when we flush, so check that we're finished.
+		assert(pending_deltas.empty());
+		return num_docids;
+	}
 
 private:
 	void write_header(uint32_t docid);
@@ -54,6 +58,7 @@ private:
 
 	vector<uint32_t> pending_deltas;
 
+	uint32_t num_docids = 0;  // Should be size_t, except the format only supports 2^32 docids per posting list anyway.
 	uint32_t last_docid = -1;
 };
 
@@ -69,8 +74,8 @@ void PostingListBuilder::add_docid(uint32_t docid)
 	if (pending_deltas.size() == 128) {
 		append_block();
 		pending_deltas.clear();
+		num_docids += 128;
 	}
-	++num_docids;
 }
 
 void PostingListBuilder::add_first_docid(uint32_t docid)
@@ -92,6 +97,9 @@ void PostingListBuilder::finish()
 	unsigned char buf[P4NENC_BOUND(128)];
 	unsigned char *end = encode_pfor_single_block<128>(pending_deltas.data(), pending_deltas.size(), /*interleaved=*/false, buf);
 	encoded.insert(encoded.end(), buf, end);
+
+	num_docids += pending_deltas.size();
+	pending_deltas.clear();
 }
 
 void PostingListBuilder::append_block()
@@ -434,7 +442,7 @@ unique_ptr<Trigram[]> create_hashtable(EncodingCorpus &corpus, const vector<uint
 	}
 	for (uint32_t trgm : all_trigrams) {
 		// We don't know offset yet, so set it to zero.
-		Trigram to_insert{ trgm, uint32_t(corpus.get_pl_builder(trgm).num_docids), 0 };
+		Trigram to_insert{ trgm, uint32_t(corpus.get_pl_builder(trgm).get_num_docids()), 0 };
 
 		uint32_t bucket = hash_trigram(trgm, ht_size);
 		unsigned distance = 0;
@@ -570,8 +578,8 @@ void DatabaseBuilder::finish_corpus()
 			continue;
 		PostingListBuilder &pl_builder = corpus->get_pl_builder(trgm);
 		pl_builder.finish();
-		longest_posting_list = max(longest_posting_list, pl_builder.num_docids);
-		trigrams += pl_builder.num_docids;
+		longest_posting_list = max(longest_posting_list, pl_builder.get_num_docids());
+		trigrams += pl_builder.get_num_docids();
 		bytes_for_posting_lists += pl_builder.encoded.size();
 	}
 	size_t num_trigrams = corpus->num_trigrams();
