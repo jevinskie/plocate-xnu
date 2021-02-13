@@ -7,9 +7,7 @@
 // than encoding posting lists, so it only costs ~5-10% overall. Does not use
 // any special character sets, and generally isn't optimized at all.
 //
-// It encodes about 0.01% denser than the reference encoder (averaged over
-// a real plocate corpus), probably since it has a slower but more precise
-// method for estimating the cost of a PFOR + varbyte block.
+// It encodes roughly about as dense as the reference encoder.
 
 #include "turbopfor-common.h"
 
@@ -311,27 +309,36 @@ BlockType decide_block_type(const Docid *in, unsigned num, unsigned *bit_width, 
 		}
 	}
 
+	// Make the histogram cumulative; histogram[n] now means the the number of
+	// elements with n bits or more.
+	for (unsigned i = max_bits; i > 0; --i) {
+		histogram[i - 1] += histogram[i];
+	}
+
 	// Try PFOR with varbyte exceptions.
 	bool best_is_varbyte = false;
 	for (unsigned test_bit_width = 0; test_bit_width < max_bits; ++test_bit_width) {
 		// 1 byte for signaling number of exceptions, plus the base values,
-		// and then we count up the varbytes and indexes. (This is precise
-		// but very slow.)
+		// and then we estimate up the varbytes and indexes using histogram
+		// indexes. This isn't exact, but it only helps ~0.1% on the total
+		// plocate.db size.
 		unsigned cost = 1 + bytes_for_packed_bits(num, test_bit_width);
-		for (unsigned i = 0; i < num && cost < best_cost; ++i) {
-			unsigned val = in[i] >> test_bit_width;
-			if (val == 0) {
-				// Not stored, and then also no index.
-			} else if (val <= 176) {
-				cost += 2;
-			} else if (val <= 16560) {
-				cost += 3;
-			} else if (val <= 540848) {
-				cost += 4;
-			} else if (val <= 16777215) {
-				cost += 5;
-			} else {
-				cost += 6;
+		if (cost >= best_cost) {
+			break;
+		}
+		if (test_bit_width + 1 <= max_bits) {
+			cost += 2 * histogram[test_bit_width + 1];  // > 0.
+			if (test_bit_width + 7 <= max_bits) {
+				cost += histogram[test_bit_width + 7];  // > 176, very roughly.
+				if (test_bit_width + 14 <= max_bits) {
+					cost += histogram[test_bit_width + 14];  // > 16560, very roughly.
+					if (test_bit_width + 19 <= max_bits) {
+						cost += histogram[test_bit_width + 19];  // > 540848, very roughly.
+						if (test_bit_width + 24 <= max_bits) {
+							cost += histogram[test_bit_width + 24];  // > 16777215, very roughly.
+						}
+					}
+				}
 			}
 		}
 		if (cost < best_cost) {
