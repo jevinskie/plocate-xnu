@@ -5,7 +5,7 @@
 // for encoding. It is _much_ slower than the reference implementation, but we
 // encode only during build, and most time in build is spent in other things
 // than encoding posting lists, so it only costs ~5-10% overall. Does not use
-// any special character sets, and generally isn't optimized at all.
+// any special instruction sets, and generally isn't optimized at all.
 //
 // It encodes roughly about as dense as the reference encoder.
 
