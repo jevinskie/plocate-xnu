@@ -64,8 +64,6 @@ void PostingListBuilder::add_docid(uint32_t docid)
 		return;
 	}
 
-	assert(num_docids != 0);
-
 	pending_deltas.push_back(docid - last_docid - 1);
 	last_docid = docid;
 	if (pending_deltas.size() == 128) {
