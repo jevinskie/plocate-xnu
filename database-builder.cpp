@@ -208,6 +208,7 @@ private:
 
 	std::unique_ptr<PostingListBuilder *[]> invindex;
 	FILE *outfp;
+	off_t outfp_pos;  // Cheaper than calling ftell(outfp) all the time.
 	std::string current_block;
 	std::string tempbuf;
 	const size_t block_size;
@@ -221,7 +222,7 @@ private:
 
 
 EncodingCorpus::EncodingCorpus(FILE *outfp, size_t block_size, ZSTD_CDict *cdict, bool store_dir_times)
-	: invindex(new PostingListBuilder *[NUM_TRIGRAMS]), outfp(outfp), block_size(block_size), store_dir_times(store_dir_times), cdict(cdict)
+	: invindex(new PostingListBuilder *[NUM_TRIGRAMS]), outfp(outfp), outfp_pos(ftell(outfp)), block_size(block_size), store_dir_times(store_dir_times), cdict(cdict)
 {
 	fill(invindex.get(), invindex.get() + NUM_TRIGRAMS, nullptr);
 	if (store_dir_times) {
@@ -336,12 +337,13 @@ void EncodingCorpus::flush_block()
 	}
 
 	// Compress and add the filename block.
-	filename_blocks.push_back(ftell(outfp));
+	filename_blocks.push_back(outfp_pos);
 	string compressed = zstd_compress(current_block, cdict, &tempbuf);
 	if (fwrite(compressed.data(), compressed.size(), 1, outfp) != 1) {
 		perror("fwrite()");
 		exit(1);
 	}
+	outfp_pos += compressed.size();
 
 	current_block.clear();
 	num_files_in_block = 0;
