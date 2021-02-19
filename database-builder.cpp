@@ -485,24 +485,26 @@ DatabaseBuilder::DatabaseBuilder(const char *outfile, gid_t owner, int block_siz
 	if (path.empty()) {
 		path = ".";
 	}
+	int fd = -1;
 #ifdef O_TMPFILE
-	int fd = open(path.c_str(), O_WRONLY | O_TMPFILE, 0640);
-	if (fd == -1) {
+	fd = open(path.c_str(), O_WRONLY | O_TMPFILE, 0640);
+	if (fd == -1 && errno != EOPNOTSUPP) {
 		perror(path.c_str());
 		exit(1);
 	}
-#else
-	temp_filename = string(outfile) + ".XXXXXX";
-	int fd = mkstemp(&temp_filename[0]);
-	if (fd == -1) {
-		perror(temp_filename.c_str());
-		exit(1);
-	}
-	if (fchmod(fd, 0640) == -1) {
-		perror("fchmod");
-		exit(1);
-	}
 #endif
+	if (fd == -1) {
+		temp_filename = string(outfile) + ".XXXXXX";
+		fd = mkstemp(&temp_filename[0]);
+		if (fd == -1) {
+			perror(temp_filename.c_str());
+			exit(1);
+		}
+		if (fchmod(fd, 0640) == -1) {
+			perror("fchmod");
+			exit(1);
+		}
+	}
 
 	if (owner != (gid_t)-1) {
 		if (fchown(fd, (uid_t)-1, owner) == -1) {
@@ -679,22 +681,24 @@ void DatabaseBuilder::finish_corpus()
 	fseek(outfp, 0, SEEK_SET);
 	fwrite(&hdr, sizeof(hdr), 1, outfp);
 
+	if (!temp_filename.empty()) {
+		if (rename(temp_filename.c_str(), outfile.c_str()) == -1) {
+			perror("rename");
+			exit(1);
+		}
+	} else {
 #ifdef O_TMPFILE
-	// Give the file a proper name, making it visible in the file system.
-	// TODO: It would be nice to be able to do this atomically, like with rename.
-	unlink(outfile.c_str());
-	char procpath[256];
-	snprintf(procpath, sizeof(procpath), "/proc/self/fd/%d", fileno(outfp));
-	if (linkat(AT_FDCWD, procpath, AT_FDCWD, outfile.c_str(), AT_SYMLINK_FOLLOW) == -1) {
-		perror("linkat");
-		exit(1);
-	}
-#else
-	if (rename(temp_filename.c_str(), outfile.c_str()) == -1) {
-		perror("rename");
-		exit(1);
-	}
+		// Give the file a proper name, making it visible in the file system.
+		// TODO: It would be nice to be able to do this atomically, like with rename.
+		unlink(outfile.c_str());
+		char procpath[256];
+		snprintf(procpath, sizeof(procpath), "/proc/self/fd/%d", fileno(outfp));
+		if (linkat(AT_FDCWD, procpath, AT_FDCWD, outfile.c_str(), AT_SYMLINK_FOLLOW) == -1) {
+			perror("linkat");
+			exit(1);
+		}
 #endif
+	}
 
 	fclose(outfp);
 
