@@ -1,3 +1,8 @@
+plocate 1.1.5, February 24th, 2021
+
+  - Various bugfixes.
+
+
 plocate 1.1.4, February 14th, 2021
 
   - updatedb now uses ~15% less CPU time.
