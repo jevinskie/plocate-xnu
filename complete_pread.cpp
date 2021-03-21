@@ -23,7 +23,11 @@ bool try_complete_pread(int fd, void *ptr, size_t len, off_t offset)
 void complete_pread(int fd, void *ptr, size_t len, off_t offset)
 {
 	if (!try_complete_pread(fd, ptr, len, offset)) {
-		perror("pread");
+		if (errno == 0) {
+			fprintf(stderr, "pread: Short read (file corrupted?)\n");
+		} else {
+			perror("pread");
+		}
 		exit(1);
 	}
 }
