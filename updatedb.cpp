@@ -628,7 +628,23 @@ int scan(const string &path, int fd, dev_t parent_dev, dir_time modified, dir_ti
 
 			entry e;
 			e.name = de->d_name;
-			e.is_directory = (de->d_type == DT_DIR);
+			if (de->d_type == DT_UNKNOWN) {
+				// Evidently some file systems, like older versions of XFS
+				// (mkfs.xfs -m crc=0 -n ftype=0), can return this,
+				// and we need a stat(). If we wanted to optimize for this,
+				// we could probably defer it to later (we're stat-ing directories
+				// when recursing), but this is rare, and not really worth it --
+				// the second stat() will be cached anyway.
+				struct stat buf;
+				if (fstatat(fd, de->d_name, &buf, AT_SYMLINK_NOFOLLOW) == 0 &&
+				    S_ISDIR(buf.st_mode)) {
+					e.is_directory = true;
+				} else {
+					e.is_directory = false;
+				}
+			} else {
+				e.is_directory = (de->d_type == DT_DIR);
+			}
 
 			if (conf_verbose) {
 				printf("%s/%s\n", path.c_str(), de->d_name);
