@@ -73,8 +73,10 @@ number at the end.
 .TP
 \fB\-d\fR, \fB\-\-database\fR \fIDBPATH\fR
 Find matches in the given database, instead of \fB/var/lib/plocate/plocate.db\fR.
-.RB ( plocate
-does not currently support multiple databases.)
+This argument can be given multiple times, to search multiple databases.
+It is also possible to give multiple databases in one argument, separated by 
+.BR : .
+(Any character, including : and \\, can be escaped by prepending a \\.)
 
 .TP
 \fB\-i\fR, \fB\-\-ignore\-case\fR
@@ -131,6 +133,15 @@ Print out usage information, then exit successfully.
 .TP
 .B \-\-version
 Print out version information, then exit successfully.
+
+.SH ENVIRONMENT
+
+.TP
+\fBLOCATE_PATH\fR
+If given, appended after the list of \fB\-\-database\fR paths
+(whether an explicit is given or the default is used).
+Colon-delimiting and character escaping follows the same rules
+as for \fB\-\-database\fR.
 
 .SH AUTHOR
 Steinar H. Gunderson <steinar+plocate@gunderson.no>

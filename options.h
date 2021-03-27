@@ -3,7 +3,6 @@
 
 #include <stdint.h>
 
-extern const char *dbpath;
 extern bool ignore_case;
 extern bool only_count;
 extern bool print_nul;

@@ -31,6 +31,8 @@
 #include <string.h>
 #include <string>
 #include <string_view>
+#include <sys/types.h>
+#include <sys/wait.h>
 #include <thread>
 #include <tuple>
 #include <unistd.h>
@@ -43,7 +45,6 @@
 using namespace std;
 using namespace std::chrono;
 
-const char *dbpath = DBFILE;
 bool ignore_case = false;
 bool only_count = false;
 bool print_nul = false;
@@ -55,6 +56,7 @@ bool match_basename = false;
 int64_t limit_matches = numeric_limits<int64_t>::max();
 int64_t limit_left = numeric_limits<int64_t>::max();
 bool stdout_is_tty = false;
+static bool in_forked_child = false;
 
 steady_clock::time_point start;
 ZSTD_DDict *ddict = nullptr;
@@ -444,11 +446,11 @@ bool new_posting_list_read(TrigramDisjunction *td, vector<uint32_t> decoded, vec
 	return false;
 }
 
-void do_search_file(const vector<Needle> &needles, const char *filename)
+uint64_t do_search_file(const vector<Needle> &needles, const std::string &filename)
 {
-	int fd = open(filename, O_RDONLY);
+	int fd = open(filename.c_str(), O_RDONLY);
 	if (fd == -1) {
-		perror(filename);
+		perror(filename.c_str());
 		exit(1);
 	}
 
@@ -461,7 +463,7 @@ void do_search_file(const vector<Needle> &needles, const char *filename)
 	start = steady_clock::now();
 	if (access("/", R_OK | X_OK)) {
 		// We can't find anything, no need to bother...
-		return;
+		return 0;
 	}
 
 	IOUringEngine engine(/*slop_bytes=*/16);  // 16 slop bytes as described in turbopfor.h.
@@ -506,10 +508,7 @@ void do_search_file(const vector<Needle> &needles, const char *filename)
 		uint64_t matched = scan_all_docids(needles, fd, corpus);
 		dprintf("Done in %.1f ms, found %" PRId64 " matches.\n",
 		        1e3 * duration<float>(steady_clock::now() - start).count(), matched);
-		if (only_count) {
-			printf("%" PRId64 "\n", matched);
-		}
-		return;
+		return matched;
 	}
 
 	// Sneak in fetching the dictionary, if present. It's not necessarily clear
@@ -528,18 +527,30 @@ void do_search_file(const vector<Needle> &needles, const char *filename)
 	}
 
 	// Look them all up on disk.
+	bool should_early_exit = false;
 	for (auto &[trgm, trigram_groups] : trigrams_to_lookup) {
-		corpus.find_trigram(trgm, [trgm{ trgm }, trigram_groups{ &trigram_groups }](const Trigram *trgmptr, size_t len) {
+		corpus.find_trigram(trgm, [trgm{ trgm }, trigram_groups{ &trigram_groups }, &should_early_exit](const Trigram *trgmptr, size_t len) {
 			if (trgmptr == nullptr) {
 				dprintf("trigram %s isn't found\n", print_trigram(trgm).c_str());
 				for (TrigramDisjunction *td : *trigram_groups) {
 					--td->remaining_trigrams_to_read;
+
+					// If we now know this trigram group doesn't match anything at all,
+					// we can do early exit; however, if we're in a forked child,
+					// that would confuse the parent process (since we don't write
+					// our count to the pipe), so we wait until we're back in to the
+					// regular (non-async) context. This is a fairly rare case anyway,
+					// and the gains from dropping the remaining trigram reads are limited.
 					if (td->remaining_trigrams_to_read == 0 && td->read_trigrams.empty()) {
-						dprintf("zero matches in %s, so we are done\n", print_td(*td).c_str());
-						if (only_count) {
-							printf("0\n");
+						if (in_forked_child) {
+							should_early_exit = true;
+						} else {
+							dprintf("zero matches in %s, so we are done\n", print_td(*td).c_str());
+							if (only_count) {
+								printf("0\n");
+							}
+							exit(0);
 						}
-						exit(0);
 					}
 				}
 				return;
@@ -553,6 +564,10 @@ void do_search_file(const vector<Needle> &needles, const char *filename)
 	}
 	engine.finish();
 	dprintf("Hashtable lookups done after %.1f ms.\n", 1e3 * duration<float>(steady_clock::now() - start).count());
+
+	if (should_early_exit) {
+		return 0;
+	}
 
 	for (TrigramDisjunction &td : trigram_groups) {
 		// Reset for reads.
@@ -636,7 +651,7 @@ void do_search_file(const vector<Needle> &needles, const char *filename)
 	}
 	engine.finish();
 	if (done) {
-		return;
+		return 0;
 	}
 	dprintf("Intersection done after %.1f ms. Doing final verification and printing:\n",
 	        1e3 * duration<float>(steady_clock::now() - start).count());
@@ -644,10 +659,120 @@ void do_search_file(const vector<Needle> &needles, const char *filename)
 	uint64_t matched = scan_docids(needles, cur_candidates, corpus, &engine);
 	dprintf("Done in %.1f ms, found %" PRId64 " matches.\n",
 	        1e3 * duration<float>(steady_clock::now() - start).count(), matched);
+	return matched;
+}
 
-	if (only_count) {
-		printf("%" PRId64 "\n", matched);
+// Run do_search_file() in a child process.
+//
+// The reason for this is that we're not robust against malicious input, so we need
+// to drop privileges after opening the file. (Otherwise, we could fall prey to an attack
+// where a user does locate -d badfile.db:/var/lib/plocate/plocate.db, badfile.db contains
+// a buffer overflow that takes over the process, and then uses the elevated privileges
+// to print out otherwise inaccessible paths.) We solve this by forking and treating the
+// child process as untrusted after it has dropped its privileges (which it does before
+// reading any data from the file); it returns a single 64-bit number over a pipe,
+// and that's it. The parent keeps its privileges, and can then fork out new children
+// without fear of being taken over. (The child keeps stdout for outputting results.)
+//
+// The count is returned over the pipe, because it's needed both for --limit and --count.
+uint64_t do_search_file_in_child(const vector<Needle> &needles, const std::string &filename)
+{
+	int pipefd[2];
+	if (pipe(pipefd) == -1) {
+		perror("pipe");
+		exit(EXIT_FAILURE);
 	}
+
+	pid_t child_pid = fork();
+	switch (child_pid) {
+	case 0: {
+		// Child.
+		close(pipefd[0]);
+		in_forked_child = true;
+		uint64_t matched = do_search_file(needles, filename);
+		int ret;
+		do {
+			ret = write(pipefd[1], &matched, sizeof(matched));
+		} while (ret == -1 && errno == EINTR);
+		if (ret != sizeof(matched)) {
+			perror("write");
+			_exit(EXIT_FAILURE);
+		}
+		_exit(EXIT_SUCCESS);
+	}
+	case -1:
+		// Error.
+		perror("fork");
+		exit(EXIT_FAILURE);
+	default:
+		// Parent.
+		close(pipefd[1]);
+		break;
+	}
+
+	// Wait for the child to finish.
+	int wstatus;
+	pid_t err;
+	do {
+		err = waitpid(child_pid, &wstatus, 0);
+	} while (err == -1 && errno == EINTR);
+	if (err == -1) {
+		perror("waitpid");
+		exit(EXIT_FAILURE);
+	}
+	if (WIFEXITED(wstatus)) {
+		if (WEXITSTATUS(wstatus) != 0) {
+			// The child has probably already printed out its error, so just propagate the exit status.
+			exit(WEXITSTATUS(wstatus));
+		}
+		// Success!
+	} else if (!WIFEXITED(wstatus)) {
+		fprintf(stderr, "FATAL: Child died unexpectedly while processing %s\n", filename.c_str());
+		exit(1);
+	}
+
+	// Now get the number of matches from the child.
+	uint64_t matched;
+	int ret;
+	do {
+		ret = read(pipefd[0], &matched, sizeof(matched));
+	} while (ret == -1 && errno == EINTR);
+	if (ret == -1) {
+		perror("read");
+		exit(EXIT_FAILURE);
+	} else if (ret != sizeof(matched)) {
+		fprintf(stderr, "FATAL: Short read through pipe (got %d bytes)\n", ret);
+		exit(EXIT_FAILURE);
+	}
+	close(pipefd[0]);
+	return matched;
+}
+
+// Parses a colon-separated list of strings and appends them onto the given vector.
+// Backslash escapes whatever comes after it.
+void parse_dbpaths(const char *ptr, vector<string> *output)
+{
+	string str;
+	while (*ptr != '\0') {
+		if (*ptr == '\\') {
+			if (ptr[1] == '\0') {
+				fprintf(stderr, "ERROR: Escape character at the end of string\n");
+				exit(EXIT_FAILURE);
+			}
+			// Escape.
+			str.push_back(ptr[1]);
+			ptr += 2;
+			continue;
+		}
+		if (*ptr == ':') {
+			// Separator.
+			output->push_back(move(str));
+			++ptr;
+			continue;
+		}
+		str.push_back(*ptr++);
+	}
+	output->push_back(move(str));
 }
 
 void usage()
@@ -681,6 +806,8 @@ void version()
 
 int main(int argc, char **argv)
 {
+	vector<string> dbpaths;
+
 	constexpr int EXTENDED_REGEX = 1000;
 	constexpr int FLUSH_CACHE = 1001;
 	static const struct option long_options[] = {
@@ -716,7 +843,7 @@ int main(int argc, char **argv)
 			only_count = true;
 			break;
 		case 'd':
-			dbpath = strdup(optarg);
+			parse_dbpaths(optarg, &dbpaths);
 			break;
 		case 'h':
 			usage();
@@ -811,5 +938,30 @@ int main(int argc, char **argv)
 		fprintf(stderr, "plocate: no pattern to search for specified\n");
 		exit(0);
 	}
-	do_search_file(needles, dbpath);
+
+	if (dbpaths.empty()) {
+		// No -d given, so use our default. Note that this happens
+		// even if LOCATE_PATH exists, to match mlocate behavior.
+		dbpaths.push_back(DBFILE);
+	}
+
+	const char *locate_path = getenv("LOCATE_PATH");
+	if (locate_path != nullptr) {
+		parse_dbpaths(locate_path, &dbpaths);
+	}
+
+	uint64_t matched = 0;
+	for (size_t i = 0; i < dbpaths.size(); ++i) {
+		uint64_t this_matched;
+		if (i != dbpaths.size() - 1) {
+			this_matched = do_search_file_in_child(needles, dbpaths[i]);
+		} else {
+			this_matched = do_search_file(needles, dbpaths[i]);
+		}
+		matched += this_matched;
+		limit_left -= this_matched;
+	}
+	if (only_count) {
+		printf("%" PRId64 "\n", matched);
+	}
 }
