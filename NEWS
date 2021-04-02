@@ -1,3 +1,14 @@
+plocate 1.1.6, April 2nd, 2021
+
+  - Support searching multiple plocate databases, including the LOCATE_PATH
+    environment variable. See the plocate(1) man page for more information.
+
+  - Fix an issue where updatedb would not recurse into directories on
+    certain filesystems, in particular the deprecated XFS V4.
+
+  - Randomize updatedb systemd unit start time. Suggested by Calum McConnell.
+
+
 plocate 1.1.5, February 24th, 2021
 
   - Various bugfixes.
