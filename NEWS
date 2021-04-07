@@ -1,3 +1,9 @@
+plocate 1.1.7, April 7th, 2021
+
+  - Correct randomization of updatedb systemd unit start time.
+    Patch by Vladimir Lomov.
+
+
 plocate 1.1.6, April 2nd, 2021
 
   - Support searching multiple plocate databases, including the LOCATE_PATH
