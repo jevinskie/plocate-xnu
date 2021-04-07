@@ -15,7 +15,7 @@ bool try_complete_pread(int fd, void *ptr, size_t len, off_t offset)
 		}
 		ptr = reinterpret_cast<char *>(ptr) + ret;
 		len -= ret;
-		offset -= ret;
+		offset += ret;
 	}
 	return true;
 }
