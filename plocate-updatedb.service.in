@@ -1,8 +1,6 @@
 [Unit]
 Description=Update the plocate database
 ConditionACPower=true
-RandomizedDelaySec=12h
-AccuracySec=20min
 
 [Service]
 Type=oneshot
