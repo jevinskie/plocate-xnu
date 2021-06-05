@@ -698,6 +698,7 @@ uint64_t do_search_file_in_child(const vector<Needle> &needles, const std::strin
 			perror("write");
 			_exit(EXIT_FAILURE);
 		}
+		fflush(stdout);
 		_exit(EXIT_SUCCESS);
 	}
 	case -1:
