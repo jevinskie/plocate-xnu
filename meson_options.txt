@@ -1,4 +1,5 @@
 option('install_cron', type: 'boolean', value: false, description: 'Install mlocate conversion script into /etc/cron.daily')
 option('install_systemd', type: 'boolean', value: true, description: 'Install systemd service and timer for updatedb, if systemd is installed')
+option('systemunitdir', type: 'string', description: 'Where to install systemd units to (default: autodetect)')
 option('locategroup', type: 'string', value: 'plocate', description: 'Group that the install script will use for the .db file')
 option('updatedb_progname', type: 'string', value: 'updatedb', description: 'Binary name of updatedb')
