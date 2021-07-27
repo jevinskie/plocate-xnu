@@ -123,7 +123,7 @@ void IOUringEngine::submit_stat_internal(io_uring_sqe *sqe, char *path, std::fun
 	pending->stat.pathname = path;
 	pending->stat.buf = new struct statx;
 
-	io_uring_prep_statx(sqe, /*fd=*/-1, pending->stat.pathname, AT_STATX_SYNC_AS_STAT, STATX_MODE, pending->stat.buf);
+	io_uring_prep_statx(sqe, /*fd=*/-1, pending->stat.pathname, AT_STATX_SYNC_AS_STAT | AT_SYMLINK_NOFOLLOW, STATX_MODE, pending->stat.buf);
 	io_uring_sqe_set_data(sqe, pending);
 	++pending_reads;
 }

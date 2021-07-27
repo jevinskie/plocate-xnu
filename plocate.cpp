@@ -53,6 +53,7 @@ bool flush_cache = false;
 bool patterns_are_regex = false;
 bool use_extended_regex = false;
 bool match_basename = false;
+bool check_existence = false;
 int64_t limit_matches = numeric_limits<int64_t>::max();
 int64_t limit_left = numeric_limits<int64_t>::max();
 bool stdout_is_tty = false;
@@ -152,8 +153,24 @@ size_t Corpus::get_num_filename_blocks() const
 	return hdr.num_docids;
 }
 
+template<class T>
+void stat_if_needed(const char *filename, bool access_ok, IOUringEngine *engine, T cb)
+{
+	if (!access_ok || !check_existence) {
+		// Doesn't have access or doesn't care about existence, so no need to stat.
+		cb(access_ok);
+	} else if (engine == nullptr || !engine->get_supports_stat()) {
+		// Do a synchronous stat.
+		struct stat buf;
+		bool ok = lstat(filename, &buf) == 0;
+		cb(ok);
+	} else {
+		engine->submit_stat(filename, cb);
+	}
+}
+
 void scan_file_block(const vector<Needle> &needles, string_view compressed,
-                     AccessRXCache *access_rx_cache, uint64_t seq, ResultReceiver *serializer,
+                     IOUringEngine *engine, AccessRXCache *access_rx_cache, uint64_t seq, ResultReceiver *serializer,
                      atomic<uint64_t> *matched)
 {
 	unsigned long long uncompressed_len = ZSTD_getFrameContentSize(compressed.data(), compressed.size());
@@ -182,14 +199,16 @@ void scan_file_block(const vector<Needle> &needles, string_view compressed,
 	block[block.size() - 1] = '\0';
 
 	auto test_candidate = [&](const char *filename, uint64_t local_seq, uint64_t next_seq) {
-		access_rx_cache->check_access(filename, /*allow_async=*/true, [matched, serializer, local_seq, next_seq, filename{ strdup(filename) }](bool ok) {
-			if (ok) {
-				++*matched;
-				serializer->print(local_seq, next_seq - local_seq, filename);
-			} else {
-				serializer->print(local_seq, next_seq - local_seq, "");
-			}
-			free(filename);
+		access_rx_cache->check_access(filename, /*allow_async=*/true, [matched, engine, serializer, local_seq, next_seq, filename{ strdup(filename) }](bool ok) {
+			stat_if_needed(filename, ok, engine, [matched, serializer, local_seq, next_seq, filename](bool ok) {
+				if (ok) {
+					++*matched;
+					serializer->print(local_seq, next_seq - local_seq, filename);
+				} else {
+					serializer->print(local_seq, next_seq - local_seq, "");
+				}
+				free(filename);
+			});
 		});
 	};
 
@@ -240,8 +259,8 @@ size_t scan_docids(const vector<Needle> &needles, const vector<uint32_t> &docids
 	atomic<uint64_t> matched{ 0 };
 	for (size_t i = 0; i < docids.size(); ++i) {
 		uint32_t docid = docids[i];
-		corpus.get_compressed_filename_block(docid, [i, &matched, &needles, &access_rx_cache, &docids_in_order](string_view compressed) {
-			scan_file_block(needles, compressed, &access_rx_cache, i, &docids_in_order, &matched);
+		corpus.get_compressed_filename_block(docid, [i, &matched, &needles, &access_rx_cache, engine, &docids_in_order](string_view compressed) {
+			scan_file_block(needles, compressed, engine, &access_rx_cache, i, &docids_in_order, &matched);
 		});
 	}
 	engine->finish();
@@ -328,7 +347,7 @@ uint64_t scan_all_docids(const vector<Needle> &needles, int fd, const Corpus &co
 	dprintf("Using %u worker threads for linear scan.\n", num_threads);
 	unique_ptr<WorkerThread[]> threads(new WorkerThread[num_threads]);
 	for (unsigned i = 0; i < num_threads; ++i) {
-		threads[i].t = thread([&threads, &mu, &queue_added, &queue_removed, &work_queue, &done, &offsets, &needles, &access_rx_cache, &matched, i] {
+		threads[i].t = thread([&threads, &mu, &queue_added, &queue_removed, &work_queue, &done, &offsets, &needles, &access_rx_cache, engine{ corpus.engine }, &matched, i] {
 			// regcomp() takes a lock on the regex, so each thread will need its own.
 			const vector<Needle> *use_needles = &needles;
 			vector<Needle> recompiled_needles;
@@ -359,7 +378,7 @@ uint64_t scan_all_docids(const vector<Needle> &needles, int fd, const Corpus &co
 				for (uint32_t docid = io_docid; docid < last_docid; ++docid) {
 					size_t relative_offset = offsets[docid] - offsets[io_docid];
 					size_t len = offsets[docid + 1] - offsets[docid];
-					scan_file_block(*use_needles, { &compressed[relative_offset], len }, &access_rx_cache, docid, &receiver, &matched);
+					scan_file_block(*use_needles, { &compressed[relative_offset], len }, engine, &access_rx_cache, docid, &receiver, &matched);
 				}
 			}
 		});
@@ -816,6 +835,7 @@ int main(int argc, char **argv)
 		{ "count", no_argument, 0, 'c' },
 		{ "basename", no_argument, 0, 'b' },
 		{ "database", required_argument, 0, 'd' },
+		{ "existing", no_argument, 0, 'e' },
 		{ "ignore-case", no_argument, 0, 'i' },
 		{ "limit", required_argument, 0, 'l' },
 		{ "null", no_argument, 0, '0' },
@@ -832,7 +852,7 @@ int main(int argc, char **argv)
 	setlocale(LC_ALL, "");
 	for (;;) {
 		int option_index = 0;
-		int c = getopt_long(argc, argv, "bcd:hil:n:0rwVD", long_options, &option_index);
+		int c = getopt_long(argc, argv, "bcd:ehil:n:0rwVD", long_options, &option_index);
 		if (c == -1) {
 			break;
 		}
@@ -845,6 +865,9 @@ int main(int argc, char **argv)
 			break;
 		case 'd':
 			parse_dbpaths(optarg, &dbpaths);
+			break;
+		case 'e':
+			check_existence = true;
 			break;
 		case 'h':
 			usage();

@@ -79,6 +79,15 @@ It is also possible to give multiple databases in one argument, separated by
 (Any character, including : and \\, can be escaped by prepending a \\.)
 
 .TP
+\fB\-e\fR, \fB\-\-existing\fR
+Print only entries that refer to files existing at the time
+.B locate
+is run. Note that unlike
+.BR mlocate (1),
+symlinks are not followed by default (and indeed, there is no option
+to change this).
+
+.TP
 \fB\-i\fR, \fB\-\-ignore\-case\fR
 Do a case-insensitive match as given by the current locale
 (default is case-sensitive, byte-by-byte match). Note that
