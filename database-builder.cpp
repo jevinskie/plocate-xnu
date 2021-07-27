@@ -36,7 +36,8 @@ public:
 	void finish();
 
 	vector<unsigned char> encoded;
-	size_t get_num_docids() const {
+	size_t get_num_docids() const
+	{
 		// Updated only when we flush, so check that we're finished.
 		assert(pending_deltas.empty());
 		return num_docids;
@@ -220,7 +221,6 @@ private:
 	std::string dir_times_compressed;
 };
 
-
 EncodingCorpus::EncodingCorpus(FILE *outfp, size_t block_size, ZSTD_CDict *cdict, bool store_dir_times)
 	: invindex(new PostingListBuilder *[NUM_TRIGRAMS]), outfp(outfp), outfp_pos(ftell(outfp)), block_size(block_size), store_dir_times(store_dir_times), cdict(cdict)
 {
@@ -319,7 +319,7 @@ void EncodingCorpus::flush_block()
 			ptr += 3;
 			continue;
 		}
-		for ( ;; ) {
+		for (;;) {
 			// NOTE: Will read one byte past the end of the trigram, but it's OK,
 			// since we always call it from contexts where there's a terminating zero byte.
 			uint32_t trgm;
