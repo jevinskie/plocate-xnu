@@ -55,7 +55,7 @@ void AccessRXCache::check_access(const char *filename, bool allow_async, functio
 			it->second.emplace_back(PendingStat{ filename, move(cb) });
 		} else {
 			it = pending_stats.emplace(filename, vector<PendingStat>{}).first;
-			engine->submit_stat(filename, [this, it, filename{ strdup(filename) }, cb{ move(cb) }] {
+			engine->submit_stat(filename, [this, it, filename{ strdup(filename) }, cb{ move(cb) }](bool) {
 				// The stat returned, so now do the actual access() calls.
 				// All of them should be in cache, so don't fire off new statx()
 				// calls during that check.

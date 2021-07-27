@@ -46,7 +46,7 @@ IOUringEngine::IOUringEngine(size_t slop_bytes)
 #endif
 }
 
-void IOUringEngine::submit_stat(const char *path, std::function<void()> cb)
+void IOUringEngine::submit_stat(const char *path, std::function<void(bool)> cb)
 {
 	assert(supports_stat);
 
@@ -115,7 +115,7 @@ void IOUringEngine::submit_read_internal(io_uring_sqe *sqe, int fd, size_t len, 
 	++pending_reads;
 }
 
-void IOUringEngine::submit_stat_internal(io_uring_sqe *sqe, char *path, std::function<void()> cb)
+void IOUringEngine::submit_stat_internal(io_uring_sqe *sqe, char *path, std::function<void(bool)> cb)
 {
 	PendingRead *pending = new PendingRead;
 	pending->op = OP_STAT;
@@ -166,7 +166,7 @@ void IOUringEngine::finish()
 				--pending_reads;
 
 				size_t old_pending_reads = pending_reads;
-				pending->stat_cb();
+				pending->stat_cb(cqe->res == 0);
 				free(pending->stat.pathname);
 				delete pending->stat.buf;
 				delete pending;

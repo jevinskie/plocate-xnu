@@ -18,11 +18,9 @@ public:
 	IOUringEngine(size_t slop_bytes);
 	void submit_read(int fd, size_t len, off_t offset, std::function<void(std::string_view)> cb);
 
-	// NOTE: We just do the stat() to get the data into the dentry cache for fast access;
-	// we don't care about the return value. Thus, the callback has no parameter lists.
-	// If we have no io_uring, the callback will be made immediately, with no stat() call
-	// being done.
-	void submit_stat(const char *path, std::function<void()> cb);
+	// NOTE: We just do the stat() to get the data into the dentry cache for fast access,
+	// or to check whether the file exists. Thus, the callback has only an OK/not OK boolean.
+	void submit_stat(const char *path, std::function<void(bool ok)> cb);
 	bool get_supports_stat() { return supports_stat; }
 
 	void finish();
@@ -31,7 +29,7 @@ public:
 private:
 #ifndef WITHOUT_URING
 	void submit_read_internal(io_uring_sqe *sqe, int fd, size_t len, off_t offset, std::function<void(std::string_view)> cb);
-	void submit_stat_internal(io_uring_sqe *sqe, char *path, std::function<void()> cb);
+	void submit_stat_internal(io_uring_sqe *sqe, char *path, std::function<void(bool)> cb);
 
 	io_uring ring;
 #endif
@@ -49,7 +47,7 @@ private:
 
 	struct QueuedStat {
 		char *pathname;  // Owned by us.
-		std::function<void()> cb;
+		std::function<void(bool)> cb;
 	};
 	std::queue<QueuedStat> queued_stats;
 
@@ -60,7 +58,7 @@ private:
 		Op op;
 
 		std::function<void(std::string_view)> read_cb;
-		std::function<void()> stat_cb;
+		std::function<void(bool)> stat_cb;
 
 		union {
 			struct {
