@@ -98,7 +98,7 @@ if run_command('[', '-r', pfordir + '/libic.a', ']').returncode() == 0
 	turbopfordep = declare_dependency(
 		include_directories: include_directories('TurboPFor-Integer-Compression'),
 		dependencies: meson.get_compiler('cpp').find_library('ic', dirs: pfordir))
-	executable('bench', ['bench.cpp', 'io_uring_engine.cpp', 'turbopfor.cpp'],
+	executable('bench', ['bench.cpp', 'io_uring_engine.cpp', 'turbopfor.cpp', 'complete_pread.cpp'],
 		dependencies: [uringdep, turbopfordep],
 		build_by_default: false,
 		install: false)

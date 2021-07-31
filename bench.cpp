@@ -8,6 +8,7 @@
 #define dprintf(...)
 //#define dprintf(...) fprintf(stderr, __VA_ARGS__);
 
+#include "complete_pread.h"
 #include "db.h"
 #include "io_uring_engine.h"
 #include "turbopfor-encode.h"
