@@ -1,3 +1,11 @@
+plocate 1.1.9, August 18th, 2021
+
+  - Support the -e (--existing) option from mlocate.
+
+  - Make it possible to set systemunitdir explicitly.
+    Based on a patch by Zbigniew Jędrzejewski-Szmek.
+
+
 plocate 1.1.8, June 12th, 2021
 
   - Various bugfixes.
