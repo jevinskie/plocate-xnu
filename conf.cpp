@@ -479,7 +479,7 @@ parse_arguments(int argc, char *argv[])
 			if (conf_scan_root != NULL)
 				error(EXIT_FAILURE, 0, _("--%s specified twice"),
 				      "database-root");
-			conf_scan_root = canonicalize_file_name(optarg);
+			conf_scan_root = realpath(optarg, nullptr);
 			if (conf_scan_root == NULL)
 				error(EXIT_FAILURE, errno, _("invalid value `%s' of --%s"), optarg,
 				      "database-root");
