@@ -46,7 +46,7 @@ IOUringEngine::IOUringEngine(size_t slop_bytes)
 #endif
 }
 
-void IOUringEngine::submit_stat(const char *path, std::function<void(bool)> cb)
+void IOUringEngine::submit_stat(const char *path [[maybe_unused]], std::function<void(bool)> cb [[maybe_unused]])
 {
 	assert(supports_stat);
 
@@ -64,10 +64,6 @@ void IOUringEngine::submit_stat(const char *path, std::function<void(bool)> cb)
 		qs.pathname = strdup(path);
 		queued_stats.push(move(qs));
 	}
-#else
-	/* unused parameters */
-	(void)path;
-	(void)cb;
 #endif
 }
 
