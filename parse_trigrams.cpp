@@ -3,6 +3,7 @@
 #include "unique_sort.h"
 
 #include <assert.h>
+#include <memory>
 #include <string.h>
 #include <wctype.h>
 
@@ -171,6 +172,7 @@ void parse_trigrams_ignore_case(const string &needle, vector<TrigramDisjunction>
 	// involving ICU or the likes.
 	mbtowc(nullptr, 0, 0);
 	const char *ptr = needle.c_str();
+	unique_ptr<char[]> buf(new char[MB_CUR_MAX]);
 	while (*ptr != '\0') {
 		wchar_t ch;
 		int ret = mbtowc(&ch, ptr, strlen(ptr));
@@ -179,17 +181,16 @@ void parse_trigrams_ignore_case(const string &needle, vector<TrigramDisjunction>
 			exit(1);
 		}
 
-		char buf[MB_CUR_MAX];
 		vector<string> alt;
 		alt.push_back(string(ptr, ret));
 		ptr += ret;
 		if (towlower(ch) != wint_t(ch)) {
-			ret = wctomb(buf, towlower(ch));
-			alt.push_back(string(buf, ret));
+			ret = wctomb(buf.get(), towlower(ch));
+			alt.push_back(string(buf.get(), ret));
 		}
 		if (towupper(ch) != wint_t(ch) && towupper(ch) != towlower(ch)) {
-			ret = wctomb(buf, towupper(ch));
-			alt.push_back(string(buf, ret));
+			ret = wctomb(buf.get(), towupper(ch));
+			alt.push_back(string(buf.get(), ret));
 		}
 		alternatives_for_cp.push_back(move(alt));
 	}
