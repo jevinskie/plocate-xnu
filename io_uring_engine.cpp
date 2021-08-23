@@ -64,6 +64,10 @@ void IOUringEngine::submit_stat(const char *path, std::function<void(bool)> cb)
 		qs.pathname = strdup(path);
 		queued_stats.push(move(qs));
 	}
+#else
+	/* unused parameters */
+	(void)path;
+	(void)cb;
 #endif
 }
 
