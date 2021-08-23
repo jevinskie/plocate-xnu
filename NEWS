@@ -1,3 +1,9 @@
+plocate 1.1.10, August 23rd, 2021
+
+  - Various bugfixes, including from the Void Linux repository
+    and from Arsen Arsenović.
+
+
 plocate 1.1.9, August 18th, 2021
 
   - Support the -e (--existing) option from mlocate.
