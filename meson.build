@@ -79,14 +79,18 @@ install_man(updatedb_conf_man)
 if get_option('install_systemd')
 	unitdir = get_option('systemunitdir')
 	if unitdir == ''
-		unitdir = dependency('systemd').get_pkgconfig_variable('systemdsystemunitdir')
+		systemd = dependency('systemd', required: false)
+		if systemd.found()
+			unitdir = systemd.get_pkgconfig_variable('systemdsystemunitdir')
+		endif
 	endif
-
-	updatedb_service = configure_file(input: 'plocate-updatedb.service.in',
-		output: 'plocate-updatedb.service',
-		configuration: conf_data)
-	install_data(updatedb_service, install_dir: unitdir)
-	install_data('plocate-updatedb.timer', install_dir: unitdir)
+	if unitdir != ''
+		updatedb_service = configure_file(input: 'plocate-updatedb.service.in',
+			output: 'plocate-updatedb.service',
+			configuration: conf_data)
+		install_data(updatedb_service, install_dir: unitdir)
+		install_data('plocate-updatedb.timer', install_dir: unitdir)
+	endif
 endif
 
 # Requires having TurboPFor checked out, so not built by default.
