@@ -11,7 +11,7 @@
 // One or more trigrams, with an implicit OR between them. For case-sensitive searches,
 // this is just e.g. “abc”, but for case-insensitive, it would be “abc OR abC or aBc ...” etc.
 struct TrigramDisjunction {
-	unsigned index;  // For debugging only.
+	unsigned index = -1;  // For debugging only.
 
 	// The alternatives as determined by parse_trigrams().
 	std::vector<uint32_t> trigram_alternatives;
