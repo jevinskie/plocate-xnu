@@ -9,6 +9,7 @@
 #include <random>
 #include <stddef.h>
 #include <string>
+#include <unistd.h>
 #include <utility>
 #include <vector>
 #include <zstd.h>
