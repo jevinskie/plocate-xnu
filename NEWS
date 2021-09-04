@@ -1,3 +1,10 @@
+plocate 1.1.11, September 5th, 2021
+
+  - Fix a crash with --existing if scanning all blocks
+    (ie., very short patterns, or --regex), by turning off
+    asynchronous stat() in this case. Reported by Michael Arndt.
+
+
 plocate 1.1.10, August 23rd, 2021
 
   - Various bugfixes, including from the Void Linux repository
