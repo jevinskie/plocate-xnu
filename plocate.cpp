@@ -348,7 +348,7 @@ uint64_t scan_all_docids(const vector<Needle> &needles, int fd, const Corpus &co
 	dprintf("Using %u worker threads for linear scan.\n", num_threads);
 	unique_ptr<WorkerThread[]> threads(new WorkerThread[num_threads]);
 	for (unsigned i = 0; i < num_threads; ++i) {
-		threads[i].t = thread([&threads, &mu, &queue_added, &queue_removed, &work_queue, &done, &offsets, &needles, &access_rx_cache, engine{ corpus.engine }, &matched, i] {
+		threads[i].t = thread([&threads, &mu, &queue_added, &queue_removed, &work_queue, &done, &offsets, &needles, &access_rx_cache, &matched, i] {
 			// regcomp() takes a lock on the regex, so each thread will need its own.
 			const vector<Needle> *use_needles = &needles;
 			vector<Needle> recompiled_needles;
@@ -379,7 +379,8 @@ uint64_t scan_all_docids(const vector<Needle> &needles, int fd, const Corpus &co
 				for (uint32_t docid = io_docid; docid < last_docid; ++docid) {
 					size_t relative_offset = offsets[docid] - offsets[io_docid];
 					size_t len = offsets[docid + 1] - offsets[docid];
-					scan_file_block(*use_needles, { &compressed[relative_offset], len }, engine, &access_rx_cache, docid, &receiver, &matched);
+					// IOUringEngine isn't thread-safe, so we do any needed stat()s synchronously (nullptr engine).
+					scan_file_block(*use_needles, { &compressed[relative_offset], len }, /*engine=*/nullptr, &access_rx_cache, docid, &receiver, &matched);
 				}
 			}
 		});
