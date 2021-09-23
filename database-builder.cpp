@@ -490,7 +490,7 @@ DatabaseBuilder::DatabaseBuilder(const char *outfile, gid_t owner, int block_siz
 	int fd = -1;
 #ifdef O_TMPFILE
 	fd = open(path.c_str(), O_WRONLY | O_TMPFILE, 0640);
-	if (fd == -1 && errno != EOPNOTSUPP) {
+	if (fd == -1 && errno != EOPNOTSUPP && errno != EISDIR) {
 		perror(path.c_str());
 		exit(1);
 	}
