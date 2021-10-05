@@ -107,6 +107,16 @@ matches have been found. If
 is given, the number printed out will be at most \fILIMIT\fR.
 
 .TP
+\fB\-N\fR, \fB\-\-literal\fR
+Print entry names without quoting. Normally,
+.B plocate
+will escape special characters in filenames, so that they are safe for
+consumption by typical shells (similar to the GNU coreutils
+.I shell-escape-always
+quoting style), unless printing to a pipe, but this options will
+turn off such quoting.
+
+.TP
 \fB\-0\fR, \fB\-\-null\fR
 Instead of writing a newline after every match, write a NUL
 (ASCII 0). This is useful for creating unambiguous output

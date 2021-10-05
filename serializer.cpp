@@ -32,7 +32,7 @@ void print_possibly_escaped(const string &str)
 	if (print_nul) {
 		printf("%s%c", str.c_str(), 0);
 		return;
-	} else if (!stdout_is_tty) {
+	} else if (literal_printing || !stdout_is_tty) {
 		printf("%s\n", str.c_str());
 		return;
 	}

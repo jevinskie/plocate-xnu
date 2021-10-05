@@ -58,6 +58,7 @@ bool check_existence = false;
 int64_t limit_matches = numeric_limits<int64_t>::max();
 int64_t limit_left = numeric_limits<int64_t>::max();
 bool stdout_is_tty = false;
+bool literal_printing = false;
 static bool in_forked_child = false;
 
 steady_clock::time_point start;
@@ -809,6 +810,7 @@ void usage()
 		"  -i, --ignore-case      search case-insensitively\n"
 		"  -l, --limit LIMIT      stop after LIMIT matches\n"
 		"  -0, --null             delimit matches by NUL instead of newline\n"
+		"  -N, --literal          do not quote filenames, even if printing to a tty\n"
 		"  -r, --regexp           interpret patterns as basic regexps (slow)\n"
 		"      --regex            interpret patterns as extended regexps (slow)\n"
 		"  -w, --wholename        search the entire path name (default; see -b)\n"
@@ -840,6 +842,7 @@ int main(int argc, char **argv)
 		{ "existing", no_argument, 0, 'e' },
 		{ "ignore-case", no_argument, 0, 'i' },
 		{ "limit", required_argument, 0, 'l' },
+		{ "literal", no_argument, 0, 'N' },
 		{ "null", no_argument, 0, '0' },
 		{ "version", no_argument, 0, 'V' },
 		{ "regexp", no_argument, 0, 'r' },
@@ -854,7 +857,7 @@ int main(int argc, char **argv)
 	setlocale(LC_ALL, "");
 	for (;;) {
 		int option_index = 0;
-		int c = getopt_long(argc, argv, "bcd:ehil:n:0rwVD", long_options, &option_index);
+		int c = getopt_long(argc, argv, "bcd:ehil:n:N0rwVD", long_options, &option_index);
 		if (c == -1) {
 			break;
 		}
@@ -884,6 +887,9 @@ int main(int argc, char **argv)
 				fprintf(stderr, "Error: limit must be a strictly positive number.\n");
 				exit(1);
 			}
+			break;
+		case 'N':
+			literal_printing = true;
 			break;
 		case '0':
 			print_nul = true;
