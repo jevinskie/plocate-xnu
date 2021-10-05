@@ -1,3 +1,11 @@
+plocate 1.1.12, October 5th, 2021
+
+  - Implement the -N/--literal option. This matches the GNU coreutils option
+    to turn off the automatic quoting of special characters when printing to
+    a tty.
+
+  - Various bugfixes, including from Arsen Arsenović.
+
 plocate 1.1.11, September 5th, 2021
 
   - Fix a crash with --existing if scanning all blocks
