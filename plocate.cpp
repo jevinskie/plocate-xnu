@@ -66,7 +66,7 @@ ZSTD_DDict *ddict = nullptr;
 
 class Corpus {
 public:
-	Corpus(int fd, IOUringEngine *engine);
+	Corpus(int fd, const char *filename_for_errors, IOUringEngine *engine);
 	~Corpus();
 	void find_trigram(uint32_t trgm, function<void(const Trigram *trgmptr, size_t len)> cb);
 	void get_compressed_filename_block(uint32_t docid, function<void(string_view)> cb) const;
@@ -84,7 +84,7 @@ public:
 	Header hdr;
 };
 
-Corpus::Corpus(int fd, IOUringEngine *engine)
+Corpus::Corpus(int fd, const char *filename_for_errors, IOUringEngine *engine)
 	: fd(fd), engine(engine)
 {
 	if (flush_cache) {
@@ -98,11 +98,11 @@ Corpus::Corpus(int fd, IOUringEngine *engine)
 
 	complete_pread(fd, &hdr, sizeof(hdr), /*offset=*/0);
 	if (memcmp(hdr.magic, "\0plocate", 8) != 0) {
-		fprintf(stderr, "plocate.db is corrupt or an old version; please rebuild it.\n");
+		fprintf(stderr, "%s: database is corrupt or not a plocate database; please rebuild it.\n", filename_for_errors);
 		exit(1);
 	}
 	if (hdr.version != 0 && hdr.version != 1) {
-		fprintf(stderr, "plocate.db has version %u, expected 0 or 1; please rebuild it.\n", hdr.version);
+		fprintf(stderr, "%s: has version %u, expected 0 or 1; please rebuild it.\n", filename_for_errors, hdr.version);
 		exit(1);
 	}
 	if (hdr.version == 0) {
@@ -489,7 +489,7 @@ uint64_t do_search_file(const vector<Needle> &needles, const std::string &filena
 	}
 
 	IOUringEngine engine(/*slop_bytes=*/16);  // 16 slop bytes as described in turbopfor.h.
-	Corpus corpus(fd, &engine);
+	Corpus corpus(fd, filename.c_str(), &engine);
 	dprintf("Corpus init done after %.1f ms.\n", 1e3 * duration<float>(steady_clock::now() - start).count());
 
 	vector<TrigramDisjunction> trigram_groups;
