@@ -91,7 +91,7 @@ void print_possibly_escaped(const string &str)
 		} else if (ret == 0) {
 			break;  // EOF.
 		}
-		if (*ptr < 32 || *ptr == '\'' || *ptr == '"' || *ptr == '\\') {
+		if ((unsigned char)*ptr < 32 || *ptr == '\'' || *ptr == '"' || *ptr == '\\') {
 			if (!in_escaped_mode) {
 				printf("'$'");
 				in_escaped_mode = true;
