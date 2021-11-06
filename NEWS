@@ -1,3 +1,8 @@
+plocate 1.1.13, November 6th, 2021
+
+  - Various bugfixes.
+
+
 plocate 1.1.12, October 5th, 2021
 
   - Implement the -N/--literal option. This matches the GNU coreutils option
@@ -5,6 +10,7 @@ plocate 1.1.12, October 5th, 2021
     a tty.
 
   - Various bugfixes, including from Arsen Arsenović.
+
 
 plocate 1.1.11, September 5th, 2021
 
