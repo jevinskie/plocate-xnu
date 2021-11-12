@@ -837,6 +837,7 @@ int main(int argc, char **argv)
 	static const struct option long_options[] = {
 		{ "help", no_argument, 0, 'h' },
 		{ "count", no_argument, 0, 'c' },
+		{ "all", no_argument, 0, 'A' },
 		{ "basename", no_argument, 0, 'b' },
 		{ "database", required_argument, 0, 'd' },
 		{ "existing", no_argument, 0, 'e' },
@@ -857,11 +858,14 @@ int main(int argc, char **argv)
 	setlocale(LC_ALL, "");
 	for (;;) {
 		int option_index = 0;
-		int c = getopt_long(argc, argv, "bcd:ehil:n:N0rwVD", long_options, &option_index);
+		int c = getopt_long(argc, argv, "Abcd:ehil:n:N0rwVD", long_options, &option_index);
 		if (c == -1) {
 			break;
 		}
 		switch (c) {
+		case 'A':
+			// Ignored.
+			break;
 		case 'b':
 			match_basename = true;
 			break;
