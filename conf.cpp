@@ -340,9 +340,10 @@ help(void)
 	printf(_("Usage: updatedb [OPTION]...\n"
 	         "Update a plocate database.\n"
 	         "\n"
-	         "  -f, --add-prunefs FS           omit also FS\n"
-	         "  -n, --add-prunenames NAMES     omit also NAMES\n"
-	         "  -e, --add-prunepaths PATHS     omit also PATHS\n"
+	         "  -f, --add-prunefs FS           omit also FS (space-separated)\n"
+	         "  -n, --add-prunenames NAMES     omit also NAMES (space-separated)\n"
+	         "  -e, --add-prunepaths PATHS     omit also PATHS (space-separated)\n"
+	         "      --add-single-prunepath PATH  omit also PATH\n"
 	         "  -U, --database-root PATH       the subtree to store in "
 	         "database (default \"/\")\n"
 	         "  -h, --help                     print this help\n"
@@ -393,12 +394,14 @@ prepend_cwd(const string &path)
 static void
 parse_arguments(int argc, char *argv[])
 {
-	enum { OPT_DEBUG_PRUNING = CHAR_MAX + 1 };
+	enum { OPT_DEBUG_PRUNING = CHAR_MAX + 1,
+	       OPT_ADD_SINGLE_PRUNEPATH = CHAR_MAX + 2 };
 
 	static const struct option options[] = {
 		{ "add-prunefs", required_argument, NULL, 'f' },
 		{ "add-prunenames", required_argument, NULL, 'n' },
 		{ "add-prunepaths", required_argument, NULL, 'e' },
+		{ "add-single-prunepath", required_argument, NULL, OPT_ADD_SINGLE_PRUNEPATH },
 		{ "database-root", required_argument, NULL, 'U' },
 		{ "debug-pruning", no_argument, NULL, OPT_DEBUG_PRUNING },
 		{ "help", no_argument, NULL, 'h' },
@@ -497,6 +500,11 @@ parse_arguments(int argc, char *argv[])
 		case 'e':
 			prunepaths_changed = true;
 			var_add_values(&conf_prunepaths, optarg);
+			break;
+
+		case OPT_ADD_SINGLE_PRUNEPATH:
+			prunepaths_changed = true;
+			conf_prunepaths.push_back(optarg);
 			break;
 
 		case 'f':
