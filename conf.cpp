@@ -471,8 +471,8 @@ parse_arguments(int argc, char *argv[])
 				      _("--%s would override earlier command-line argument"),
 				      "prunepaths");
 			prunepaths_changed = true;
-			conf_prunepaths.clear(),
-				var_add_values(&conf_prunepaths, optarg);
+			conf_prunepaths.clear();
+			var_add_values(&conf_prunepaths, optarg);
 			break;
 
 		case 'U':
