@@ -179,13 +179,13 @@ can get the complete list of files in the subtree of \fIsource_directory\fR.
 \fB@updatedb_conf@\fR
 A configuration file.  See
 .BR updatedb.conf (5).
+Uses exactly the same format as the one used by
+.BR mlocate (1)'s
+updatedb, so they can be shared.
 
 .TP
 \fB@dbfile@\fR
-The database updated by default. Uses exactly the same format
-as the one used by
-.BR mlocate (1)'s
-updatedb, so they can be shared.
+The database updated by default.
 
 .SH SECURITY
 Databases built with
