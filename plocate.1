@@ -12,13 +12,13 @@ plocate \- find files by name, quickly
 finds all files on the system matching the given pattern (or all
 of the patterns if multiple are given). It does this by means of
 an index made by
-.BR plocate-build (8),
-which in turn reads the database made by 
-.BR updatedb (8).
+.BR updatedb (8)
+or (less commonly) converted from another index by
+.BR plocate-build (8).
 
-plocate is largely compatible with
+plocate is largely argument-compatible with
 .BR mlocate (1),
-and reuses its database to create its index, but is significantly
+but is significantly
 faster. In particular, it rarely needs to scan through its entire
 database, unless the pattern is very short (less than three bytes)
 or you want to search for a regular expression. It does not try to
