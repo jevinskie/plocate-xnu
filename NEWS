@@ -1,3 +1,13 @@
+plocate 1.1.14, December 27th, 2021
+
+  - Add an option --add-single-prunepath.
+    
+    This makes it possible to prune a path with spaces in the file name,
+    which was previously impossible.
+
+  - Documentation updates.
+
+
 plocate 1.1.13, November 6th, 2021
 
   - Various bugfixes.
