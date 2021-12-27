@@ -97,6 +97,11 @@ bind mounts are not scanned by
 All file systems mounted in the subtree of a bind mount are skipped as well,
 even if they are not bind mounts.
 As an exception, bind mounts of a directory on itself are not skipped.
+Note that Btrfs subvolume mounts are handled internally in the kernel
+as bind mounts (see
+.BR btrfs-subvolume (8)),
+and thus, may get skipped if you have also mounted the filesystem root itself.
+To counteract this, make your root directory a Btrfs subvolume, too.
 
 By default, bind mounts are not skipped.
 
