@@ -23,7 +23,6 @@ any later version.
 #include "lib.h"
 
 #include "db.h"
-#include "error.h"
 
 #include <algorithm>
 #include <arpa/inet.h>
