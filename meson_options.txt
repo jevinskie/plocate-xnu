@@ -3,4 +3,3 @@ option('install_systemd', type: 'boolean', value: true, description: 'Install sy
 option('systemunitdir', type: 'string', description: 'Where to install systemd units to (default: autodetect)')
 option('locategroup', type: 'string', value: 'plocate', description: 'Group that the install script will use for the .db file')
 option('updatedb_progname', type: 'string', value: 'updatedb', description: 'Binary name of updatedb')
-option('dbpath', type: 'string', value: 'plocate/plocate.db', description: 'Path to plocate database relative to "sharedstatedir"')
