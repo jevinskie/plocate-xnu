@@ -2,8 +2,7 @@ project('plocate', 'cpp', default_options: ['buildtype=debugoptimized','cpp_std=
 
 add_project_arguments('-DGROUPNAME="' + get_option('locategroup') + '"', language: 'cpp')
 add_project_arguments('-DUPDATEDB_CONF="/etc/updatedb.conf"', language: 'cpp')
-dbdir = join_paths(get_option('sharedstatedir'), 'plocate')
-dbfile = join_paths(dbdir, 'plocate.db')
+dbfile = join_paths(get_option('sharedstatedir'), get_option('dbpath'))
 add_project_arguments('-DDBFILE="' + dbfile + '"', language: 'cpp')
 add_project_arguments('-DPACKAGE_NAME="plocate"', language: 'cpp')
 add_project_arguments('-DPACKAGE_VERSION="' + meson.project_version() + '"', language: 'cpp')
@@ -56,7 +55,8 @@ update_script = configure_file(input: 'update-plocate.sh',
                output: 'update-plocate.sh',
                configuration: conf_data)
 
-meson.add_install_script('mkdir.sh', dbdir)
+fs = import('fs')
+meson.add_install_script('mkdir.sh', fs.parent(dbfile))
 
 if get_option('install_cron')
 	install_data(update_script,
