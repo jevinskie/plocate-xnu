@@ -713,6 +713,20 @@ int scan(const string &path, int fd, dev_t parent_dev, dir_time modified, dir_ti
 
 		struct stat buf;
 		if (fstat(e.fd, &buf) != 0) {
+			// It's possible that this is a filesystem that's excluded
+			// (and the failure is e.g. because the network is down).
+			// As a last-ditch effort, we try to check that before dying,
+			// i.e., duplicate the check from further down.
+			//
+			// It would be better to be able to run filesystem_is_excluded()
+			// for cheap on everything and just avoid the stat, but it seems
+			// hard to do that without any kind of raciness.
+			if (filesystem_is_excluded((path_plus_slash + e.name).c_str())) {
+				close(e.fd);
+				e.fd = -1;
+				continue;
+			}
+
 			perror((path_plus_slash + e.name).c_str());
 			exit(1);
 		}
