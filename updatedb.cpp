@@ -713,7 +713,7 @@ int scan(const string &path, int fd, dev_t parent_dev, dir_time modified, dir_ti
 
 		struct stat buf;
 		if (fstat(e.fd, &buf) != 0) {
-			perror(path.c_str());
+			perror((path_plus_slash + e.name).c_str());
 			exit(1);
 		}
 
