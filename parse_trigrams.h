@@ -58,7 +58,7 @@ static constexpr uint32_t PREMATURE_END_UNIGRAM = 0xFF000001;
 
 // Reads a unigram, taking into account escaping (\<foo> becomes <foo>).
 // Returns WILDCARD_UNIGRAM if there's an invalid unigram, ie., we found
-// a glob character (?, * or a [] group). Returns EOS_UNIGRAM if we went
+// a glob character (?, * or a [] group). Returns PREMATURE_END_UNIGRAM if we went
 // past the end of the string, e.g., a string that ends in a backslash.
 // The second element is always the length.
 std::pair<uint32_t, size_t> read_unigram(const std::string &s, size_t start);
