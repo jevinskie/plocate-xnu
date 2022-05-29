@@ -610,8 +610,12 @@ int scan(const string &path, int fd, dev_t parent_dev, dir_time modified, dir_ti
 	} else {
 		dir = fdopendir(fd);  // Takes over ownership of fd.
 		if (dir == nullptr) {
-			perror("fdopendir");
-			exit(1);
+			// fdopendir() wants to fstat() the fd to verify that it's indeed
+			// a directory, which can seemingly fail on at least CIFS filesystems
+			// if the server feels like it. We treat this as if we had an error
+			// on opening it, ie., ignore the directory.
+			close(fd);
+			return 0;
 		}
 
 		dirent *de;
