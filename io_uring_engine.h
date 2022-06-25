@@ -7,6 +7,7 @@
 #include <string_view>
 #include <sys/socket.h>
 #include <sys/types.h>
+#include <linux/stat.h>
 
 struct io_uring_sqe;
 #ifndef WITHOUT_URING
