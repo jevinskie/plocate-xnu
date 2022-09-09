@@ -11,9 +11,9 @@ struct mntent {
   char* mnt_type;
 };
 
-int endmntent(FILE *fp);
-struct mntent *getmntent(FILE *fp);
 FILE *setmntent(const char* filename, const char *type);
+struct mntent *getmntent(FILE *fp);
+int endmntent(FILE *fp);
 
 #ifdef __cplusplus
 } // extern "C"

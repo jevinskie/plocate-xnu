@@ -211,8 +211,13 @@ bool filesystem_is_excluded(const char *path)
 
 dir_time get_dirtime_from_stat(const struct stat &buf)
 {
+#ifndef __APPLE__
 	dir_time ctime{ buf.st_ctim.tv_sec, int32_t(buf.st_ctim.tv_nsec) };
 	dir_time mtime{ buf.st_mtim.tv_sec, int32_t(buf.st_mtim.tv_nsec) };
+#else
+	dir_time ctime{ buf.st_ctimespec.tv_sec, int32_t(buf.st_ctimespec.tv_nsec) };
+	dir_time mtime{ buf.st_mtimespec.tv_sec, int32_t(buf.st_mtimespec.tv_nsec) };
+#endif
 	dir_time dt = max(ctime, mtime);
 
 	if (time_is_current(dt)) {
