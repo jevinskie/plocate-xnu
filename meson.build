@@ -20,6 +20,12 @@ endif
 if cxx.has_header('endian.h')
 	add_project_arguments('-DHAS_ENDIAN_H', language: 'cpp')
 endif
+if cxx.has_header('mntent.h')
+	add_project_arguments('-DHAS_MNTENT_H', language: 'cpp')
+	mntent_compat_src = []
+else
+	mntent_compat_src = ['mntent_compat.cpp']
+endif
 
 # Function multiversioning is x86-only _and_ not available on certain targets
 # (they need “ifunc”, indirect functions, a GNU extension).
@@ -39,7 +45,7 @@ executable('plocate-build', ['plocate-build.cpp', 'database-builder.cpp'],
 	install: true,
 	install_dir: get_option('sbindir'))
 updatedb_progname = get_option('updatedb_progname')
-executable(updatedb_progname, ['updatedb.cpp', 'database-builder.cpp', 'conf.cpp', 'lib.cpp', 'bind-mount.cpp', 'complete_pread.cpp'],
+executable(updatedb_progname, ['updatedb.cpp', 'database-builder.cpp', 'conf.cpp', 'lib.cpp', 'bind-mount.cpp', 'complete_pread.cpp'] + mntent_compat_src,
 	dependencies: [zstddep, threaddep],
 	install: true,
 	install_dir: get_option('sbindir'))

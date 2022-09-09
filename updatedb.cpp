@@ -42,7 +42,11 @@ any later version.
 #include <iosfwd>
 #include <math.h>
 #include <memory>
+#ifdef HAS_MNTENT_H
 #include <mntent.h>
+#else
+#include "mntent_compat.h"
+#endif
 #include <random>
 #include <stdint.h>
 #include <stdio.h>

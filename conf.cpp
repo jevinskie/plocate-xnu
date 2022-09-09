@@ -35,6 +35,14 @@ any later version.
 #include <string.h>
 #include <unistd.h>
 
+#ifdef __APPLE__
+const char *program_invocation_name;
+__attribute__((constructor))
+static void init_program_invocation_name(void) {
+	program_invocation_name = getprogname();
+}
+#endif
+
 using namespace std;
 
 /* true if locate(1) should check whether files are visible before reporting

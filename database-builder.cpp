@@ -7,6 +7,8 @@
 #include <assert.h>
 #ifdef HAS_ENDIAN_H
 #include <endian.h>
+#else
+#include "endian_compat.h"
 #endif
 #include <fcntl.h>
 #include <string.h>

@@ -2,6 +2,8 @@
 #include <assert.h>
 #ifdef HAS_ENDIAN_H
 #include <endian.h>
+#else
+#include "endian_compat.h"
 #endif
 #include <stdint.h>
 #include <string.h>

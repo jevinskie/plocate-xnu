@@ -93,7 +93,9 @@ Corpus::Corpus(int fd, const char *filename_for_errors, IOUringEngine *engine)
 			perror("lseek");
 			exit(1);
 		}
+#ifndef __APPLE__
 		posix_fadvise(fd, 0, len, POSIX_FADV_DONTNEED);
+#endif
 	}
 
 	complete_pread(fd, &hdr, sizeof(hdr), /*offset=*/0);

@@ -15,6 +15,8 @@
 #include <assert.h>
 #ifdef HAS_ENDIAN_H
 #include <endian.h>
+#else
+#include "endian_compat.h"
 #endif
 #include <limits.h>
 #include <stdint.h>
