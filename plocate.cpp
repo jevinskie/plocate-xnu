@@ -367,7 +367,7 @@ uint64_t scan_all_docids(const vector<Needle> &needles, int fd, const Corpus &co
 				string compressed;
 
 				{
-					unique_lock<mutex> lock(mu);
+					unique_lock lock(mu);
 					queue_added.wait(lock, [&work_queue, &done] { return !work_queue.empty() || done; });
 					if (done && work_queue.empty()) {
 						return;
@@ -397,7 +397,7 @@ uint64_t scan_all_docids(const vector<Needle> &needles, int fd, const Corpus &co
 		complete_pread(fd, &compressed[0], io_len, offsets[io_docid]);
 
 		{
-			unique_lock<mutex> lock(mu);
+			unique_lock lock(mu);
 			queue_removed.wait(lock, [&work_queue] { return work_queue.size() < 256; });  // Allow ~2MB of data queued up.
 			work_queue.emplace_back(io_docid, last_docid, move(compressed));
 			queue_added.notify_one();  // Avoid the thundering herd.
