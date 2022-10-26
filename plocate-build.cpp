@@ -8,6 +8,7 @@
 #include <chrono>
 #include <getopt.h>
 #include <iosfwd>
+#include <locale.h>
 #include <math.h>
 #include <memory>
 #include <random>
