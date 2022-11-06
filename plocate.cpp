@@ -571,7 +571,7 @@ uint64_t do_search_file(const vector<Needle> &needles, const std::string &filena
 							if (only_count) {
 								printf("0\n");
 							}
-							exit(0);
+							exit(1);
 						}
 					}
 				}
@@ -972,7 +972,7 @@ int main(int argc, char **argv)
 	}
 	if (needles.empty()) {
 		fprintf(stderr, "plocate: no pattern to search for specified\n");
-		exit(0);
+		exit(1);
 	}
 
 	if (dbpaths.empty()) {
@@ -1000,4 +1000,6 @@ int main(int argc, char **argv)
 	if (only_count) {
 		printf("%" PRId64 "\n", matched);
 	}
+
+	return matched == 0;
 }

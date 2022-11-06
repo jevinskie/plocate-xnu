@@ -57,6 +57,16 @@ and none that are not, by means of running with the setgid
 bit set to access the index (which is built as root), but by
 testing visibility as the calling user.
 
+.SH EXIT STATUS
+.B plocate
+exits with 0 to indicate that a match was found or that
+.B --help
+or
+.B --version
+were passed. Otherwise,
+.B plocate
+exits with status code 1, indicating that an error occurred or that no matches were found.
+
 .SH OPTIONS
 .TP
 \fB\-A\fR, \fB\-\-all\fR
