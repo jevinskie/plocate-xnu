@@ -1,3 +1,11 @@
+plocate 1.1.7, November 21st, 2022
+
+  - Return 1 if no matches were found. Patch by Clément Pit-Claudel.
+
+  - Various portability patches, thanks to Maciej Adamczyk,
+    Alfred Persson Forsberg, and the Alpine Linux packaging.
+
+
 plocate 1.1.16, June 4th, 2022
 
   - Various bugfixes.
