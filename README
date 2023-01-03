@@ -12,7 +12,7 @@ and a kernel supporting io_uring (Linux 5.1 or newer) is optional,
 but strongly recommended for best performance, especially if you
 do not have an SSD. Installation is run as:
 
-  meson obj
+  meson setup obj
   cd obj
   ninja
   sudo addgroup --system plocate
