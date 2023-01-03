@@ -707,8 +707,8 @@ int scan(const string &path, int fd, dev_t parent_dev, dir_time modified, dir_ti
 				if (getrlimit(RLIMIT_NOFILE, &rlim) == -1) {
 					fprintf(stderr, "Hint: Try `ulimit -n 131072' or similar.\n");
 				} else {
-					fprintf(stderr, "Hint: Try `ulimit -n %lu' or similar (current limit is %lu).\n",
-					        rlim.rlim_cur * 2, rlim.rlim_cur);
+					fprintf(stderr, "Hint: Try `ulimit -n %" PRIu64 " or similar (current limit is %" PRIu64 ").\n",
+					        static_cast<uint64_t>(rlim.rlim_cur * 2), static_cast<uint64_t>(rlim.rlim_cur));
 				}
 				exit(1);
 			}
