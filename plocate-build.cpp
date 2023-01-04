@@ -147,7 +147,7 @@ void read_mlocate(FILE *fp, DatabaseReceiver *receiver)
 	}
 }
 
-void do_build(const char *infile, const char *outfile, int block_size, bool plaintext)
+void do_build(const char *infile, const char *outfile, int block_size, bool plaintext, bool check_visibility)
 {
 	FILE *infp = fopen(infile, "rb");
 	if (infp == nullptr) {
@@ -167,7 +167,7 @@ void do_build(const char *infile, const char *outfile, int block_size, bool plai
 	}
 	string dictionary = builder.train(1024);
 
-	DatabaseBuilder db(outfile, /*owner=*/-1, block_size, dictionary, /*check_visibility=*/true);
+	DatabaseBuilder db(outfile, /*owner=*/-1, block_size, dictionary, check_visibility);
 	DatabaseReceiver *corpus = db.start_corpus(/*store_dir_times=*/false);
 	if (plaintext) {
 		read_plaintext(infp, corpus);
@@ -190,6 +190,7 @@ void usage()
 		"\n"
 		"  -b, --block-size SIZE  number of filenames to store in each block (default 32)\n"
 		"  -p, --plaintext        input is a plaintext file, not an mlocate database\n"
+	        "  -l, --require-visibility FLAG  check visibility before reporting files\n"
 		"      --help             print this help\n"
 		"      --version          print version information\n");
 }
@@ -203,11 +204,25 @@ void version()
 	printf("There is NO WARRANTY, to the extent permitted by law.\n");
 }
 
+bool parse_bool(const string &str, bool *result)
+{
+	if (str == "0" || str == "no") {
+		*result = false;
+		return true;
+	}
+	if (str == "1" || str == "yes") {
+		*result = true;
+		return true;
+	}
+	return false;
+}
+
 int main(int argc, char **argv)
 {
 	static const struct option long_options[] = {
 		{ "block-size", required_argument, 0, 'b' },
 		{ "plaintext", no_argument, 0, 'p' },
+		{ "require-visibility", required_argument, 0, 'l' },
 		{ "help", no_argument, 0, 'h' },
 		{ "version", no_argument, 0, 'V' },
 		{ "debug", no_argument, 0, 'D' },  // Not documented.
@@ -216,11 +231,12 @@ int main(int argc, char **argv)
 
 	int block_size = 32;
 	bool plaintext = false;
+	bool check_visibility = true;
 
 	setlocale(LC_ALL, "");
 	for (;;) {
 		int option_index = 0;
-		int c = getopt_long(argc, argv, "b:hpVD", long_options, &option_index);
+		int c = getopt_long(argc, argv, "b:hpl:VD", long_options, &option_index);
 		if (c == -1) {
 			break;
 		}
@@ -230,6 +246,13 @@ int main(int argc, char **argv)
 			break;
 		case 'p':
 			plaintext = true;
+			break;
+		case 'l':
+			if (!parse_bool(optarg, &check_visibility) != 0) {
+				fprintf(stderr, "plocate-build: invalid value `%s' for --%s",
+					 optarg, "require-visibility");
+				exit(EXIT_FAILURE);
+			}
 			break;
 		case 'h':
 			usage();
@@ -250,6 +273,6 @@ int main(int argc, char **argv)
 		exit(1);
 	}
 
-	do_build(argv[optind], argv[optind + 1], block_size, plaintext);
+	do_build(argv[optind], argv[optind + 1], block_size, plaintext, check_visibility);
 	exit(EXIT_SUCCESS);
 }
