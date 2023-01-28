@@ -1,4 +1,11 @@
-plocate 1.1.7, November 21st, 2022
+plocate 1.1.18, January 28th, 2023
+
+  - Support the --require-visibility flag in plocate-build.
+
+  - Various bugfixes.
+
+
+plocate 1.1.17, November 21st, 2022
 
   - Return 1 if no matches were found. Patch by Clément Pit-Claudel.
 

@@ -68,6 +68,10 @@ bool conf_verbose; /* = false; */
 /* Configuration representation for the database configuration block */
 string conf_block;
 
+/* Absolute (not necessarily canonical) path to the config file */
+string conf_configfile_str;
+const char *conf_configfile;
+
 int conf_block_size = 32;
 bool use_debug = false;
 
