@@ -249,7 +249,7 @@ int main(int argc, char **argv)
 			break;
 		case 'l':
 			if (!parse_bool(optarg, &check_visibility) != 0) {
-				fprintf(stderr, "plocate-build: invalid value `%s' for --%s",
+				fprintf(stderr, "plocate-build: invalid value `%s' for --%s\n",
 					 optarg, "require-visibility");
 				exit(EXIT_FAILURE);
 			}
