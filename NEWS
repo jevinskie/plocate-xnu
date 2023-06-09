@@ -1,3 +1,10 @@
+plocate 1.1.19, June 9th, 2023
+
+  - Various bugfixes; thanks to Tim Landscheidt, Nick Alcock
+    and sudhanshu goswami. In particular, this fixes a crash
+    with liburing 2.4.
+
+
 plocate 1.1.18, January 28th, 2023
 
   - Support the --require-visibility flag in plocate-build.
