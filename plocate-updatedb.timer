@@ -3,8 +3,8 @@ Description=Update the plocate database daily
 
 [Timer]
 OnCalendar=daily
-RandomizedDelaySec=12h
-AccuracySec=20min
+RandomizedDelaySec=1h
+AccuracySec=6h
 Persistent=true
 
 [Install]
