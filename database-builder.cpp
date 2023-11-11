@@ -683,6 +683,10 @@ void DatabaseBuilder::finish_corpus()
 	fseek(outfp, 0, SEEK_SET);
 	fwrite(&hdr, sizeof(hdr), 1, outfp);
 
+	// This is needed on systems that simulate linkat() by copying
+	// the contents of the file instead of linking.
+	fflush(outfp);
+
 	if (!temp_filename.empty()) {
 		if (rename(temp_filename.c_str(), outfile.c_str()) == -1) {
 			perror("rename");
