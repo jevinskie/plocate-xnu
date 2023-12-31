@@ -55,6 +55,7 @@ bool patterns_are_regex = false;
 bool use_extended_regex = false;
 bool match_basename = false;
 bool check_existence = false;
+bool ignore_visibility = false;
 int64_t limit_matches = numeric_limits<int64_t>::max();
 int64_t limit_left = numeric_limits<int64_t>::max();
 bool stdout_is_tty = false;
@@ -113,6 +114,9 @@ Corpus::Corpus(int fd, const char *filename_for_errors, IOUringEngine *engine)
 	if (hdr.max_version < 2) {
 		// This too. (We ignore the other max_version 2 fields.)
 		hdr.check_visibility = true;
+	}
+	if (ignore_visibility) {
+		hdr.check_visibility = false;
 	}
 }
 
@@ -834,6 +838,7 @@ int main(int argc, char **argv)
 
 	constexpr int EXTENDED_REGEX = 1000;
 	constexpr int FLUSH_CACHE = 1001;
+	constexpr int IGNORE_VISIBILITY = 1002;
 	static const struct option long_options[] = {
 		{ "help", no_argument, 0, 'h' },
 		{ "count", no_argument, 0, 'c' },
@@ -852,6 +857,9 @@ int main(int argc, char **argv)
 		{ "debug", no_argument, 0, 'D' },  // Not documented.
 		// Enable to test cold-cache behavior (except for access()). Not documented.
 		{ "flush-cache", no_argument, 0, FLUSH_CACHE },
+		// Mostly useful to dump out the entire database, even if the given directories
+		// are gone. Disables sgid due to security. Not documented.
+		{ "ignore-visibility", no_argument, 0, IGNORE_VISIBILITY },
 		{ 0, 0, 0, 0 }
 	};
 
@@ -917,17 +925,22 @@ int main(int argc, char **argv)
 		case 'V':
 			version();
 			break;
+		case IGNORE_VISIBILITY:
+			ignore_visibility = true;
+			break;
 		default:
 			exit(1);
 		}
 	}
 
-	if (use_debug || flush_cache) {
+	if (use_debug || flush_cache || ignore_visibility) {
 		// Debug information would leak information about which files exist,
 		// so drop setgid before we open the file; one would either need to run
 		// as root, or use a locally-built file. Doing the same thing for
 		// flush_cache is mostly paranoia, in an attempt to prevent random users
 		// from making plocate slow for everyone else.
+		// --ignore-visibility is obvious; if we allowed to keep sgid with
+		// that flag on, it would subvert the entire security model.
 		if (setgid(getgid()) != 0) {
 			perror("setgid");
 			exit(EXIT_FAILURE);
