@@ -1,3 +1,17 @@
+plocate 1.1.20, December 31st, 2023
+
+  - Fix updatedb writing incomplete .db files under Termux.
+    Patch by Grisha Levit.
+
+  - Make the systemd timer run more consistently during the
+    night. Patch by Florian Schmaus.
+
+  - Add an (undocumented) flag --ignore-visibility to plocate,
+    giving the equivalent of building the database with
+    --require-visibility no. Drops setgid, of course, so you
+    will usually need to be root to use it.
+
+
 plocate 1.1.19, June 9th, 2023
 
   - Various bugfixes; thanks to Tim Landscheidt, Nick Alcock
