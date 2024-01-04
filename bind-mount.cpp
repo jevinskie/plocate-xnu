@@ -84,8 +84,7 @@ static string read_mount_line(FILE *f)
 }
 
 /* Parse a space-delimited entry in STR, decode octal escapes, write it to
-   DEST (allocated from mount_string_obstack) if it is not nullptr.
-   Return 0 if OK, -1 on error. */
+   DEST if it is not nullptr.  Return 0 if OK, -1 on error. */
 static int parse_mount_string(string *dest, const char **str)
 {
 	const char *src = *str;
