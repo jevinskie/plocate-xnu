@@ -638,7 +638,6 @@ void conf_prepare(int argc, char *argv[])
 	string_list_dir_path_sort(&conf_prunepaths);
 
 	if (conf_debug_pruning) {
-		/* This is debuging output, don't mark anything for translation */
 		fprintf(stderr, "conf_block:\n");
 		for (char c : conf_block) {
 			if (isascii((unsigned char)c) && isprint((unsigned char)c) && c != '\\')

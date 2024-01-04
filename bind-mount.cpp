@@ -182,7 +182,6 @@ static int read_mount_entries(void)
 	mount me;
 	while (read_mount_entry(f, &me)) {
 		if (conf_debug_pruning) {
-			/* This is debugging output, don't mark anything for translation */
 			fprintf(stderr,
 			        " `%s' (%d on %d) is `%s' of `%s' (%u:%u), type `%s'\n",
 			        me.mount_point.c_str(), me.id, me.parent_id, me.root.c_str(), me.source.c_str(),
@@ -209,14 +208,12 @@ static size_t bind_mount_paths_index; /* = 0; */
 static void rebuild_bind_mount_paths(void)
 {
 	if (conf_debug_pruning) {
-		/* This is debugging output, don't mark anything for translation */
 		fprintf(stderr, "Rebuilding bind_mount_paths:\n");
 	}
 	if (read_mount_entries() != 0) {
 		return;
 	}
 	if (conf_debug_pruning) {
-		/* This is debugging output, don't mark anything for translation */
 		fprintf(stderr, "Matching bind_mount_paths:\n");
 	}
 
@@ -234,7 +231,6 @@ static void rebuild_bind_mount_paths(void)
 			// If there are two that are equal, prefer the one with lowest ID.
 			if (me.root.size() > other.root.size() && me.root.find(other.root) == 0) {
 				if (conf_debug_pruning) {
-					/* This is debugging output, don't mark anything for translation */
 					fprintf(stderr, " => adding `%s' (root `%s' is a child of `%s', mounted on `%s')\n",
 					        me.mount_point.c_str(), me.root.c_str(), other.root.c_str(), other.mount_point.c_str());
 				}
@@ -243,7 +239,6 @@ static void rebuild_bind_mount_paths(void)
 			}
 			if (me.root == other.root && me.id > other.id) {
 				if (conf_debug_pruning) {
-					/* This is debugging output, don't mark anything for translation */
 					fprintf(stderr, " => adding `%s' (duplicate of mount point `%s')\n",
 					        me.mount_point.c_str(), other.mount_point.c_str());
 				}
@@ -253,7 +248,6 @@ static void rebuild_bind_mount_paths(void)
 		}
 	}
 	if (conf_debug_pruning) {
-		/* This is debugging output, don't mark anything for translation */
 		fprintf(stderr, "...done\n");
 	}
 	string_list_dir_path_sort(&bind_mount_paths);

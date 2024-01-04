@@ -162,7 +162,6 @@ struct entry {
 bool filesystem_is_excluded(const char *path)
 {
 	if (conf_debug_pruning) {
-		/* This is debugging output, don't mark anything for translation */
 		fprintf(stderr, "Checking whether filesystem `%s' is excluded:\n", path);
 	}
 	FILE *f = setmntent("/proc/mounts", "r");
@@ -173,7 +172,6 @@ bool filesystem_is_excluded(const char *path)
 	struct mntent *me;
 	while ((me = getmntent(f)) != nullptr) {
 		if (conf_debug_pruning) {
-			/* This is debugging output, don't mark anything for translation */
 			fprintf(stderr, " `%s', type `%s'\n", me->mnt_dir, me->mnt_type);
 		}
 		string type(me->mnt_type);
@@ -186,7 +184,6 @@ bool filesystem_is_excluded(const char *path)
 		           if the filesystem is unavailable hard-mounted NFS. */
 			char *dir = me->mnt_dir;
 			if (conf_debug_pruning) {
-				/* This is debugging output, don't mark anything for translation */
 				fprintf(stderr, " => type matches, dir `%s'\n", dir);
 			}
 			bool res = (strcmp(path, dir) == 0);
@@ -199,7 +196,6 @@ bool filesystem_is_excluded(const char *path)
 		}
 	}
 	if (conf_debug_pruning) {
-		/* This is debugging output, don't mark anything for translation */
 		fprintf(stderr, "...done\n");
 	}
 	endmntent(f);
@@ -535,7 +531,6 @@ int scan(const string &path, int fd, dev_t parent_dev, dir_time modified, dir_ti
 {
 	if (conf_prune_bind_mounts && is_bind_mount(path.c_str())) {
 		if (conf_debug_pruning) {
-			/* This is debugging output, don't mark anything for translation */
 			fprintf(stderr, "Skipping `%s': bind mount\n", path.c_str());
 		}
 		close(fd);
@@ -684,14 +679,12 @@ int scan(const string &path, int fd, dev_t parent_dev, dir_time modified, dir_ti
 
 		if (find(conf_prunenames.begin(), conf_prunenames.end(), e.name) != conf_prunenames.end()) {
 			if (conf_debug_pruning) {
-				/* This is debugging output, don't mark anything for translation */
 				fprintf(stderr, "Skipping `%s': in prunenames\n", e.name.c_str());
 			}
 			continue;
 		}
 		if (string_list_contains_dir_path(&conf_prunepaths, &conf_prunepaths_index, (path_plus_slash + e.name).c_str())) {
 			if (conf_debug_pruning) {
-				/* This is debugging output, don't mark anything for translation */
 				fprintf(stderr, "Skipping `%s/%s': in prunepaths\n", path.c_str(), e.name.c_str());
 			}
 			continue;
