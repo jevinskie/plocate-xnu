@@ -30,7 +30,7 @@ any later version.
    (Bind mounts "to self" are ignored.) */
 extern bool is_bind_mount(const char *path);
 
-/* Initialize state for is_bind_mount(), to read data from MOUNTINFO. */
-extern void bind_mount_init(const char *mountinfo);
+/* Initialize state for is_bind_mount(), to read data from MOUNTINFO_PATH. */
+extern void bind_mount_init();
 
 #endif

@@ -38,6 +38,7 @@ any later version.
 #include <sys/stat.h>
 #include <sys/time.h>
 #include <thread>
+#include <optional>
 
 using namespace std;
 
@@ -54,10 +55,10 @@ struct mount {
 };
 
 /* Path to mountinfo */
-static const char *mountinfo_path;
-atomic<bool> mountinfo_updated{ false };
+static atomic<bool> mountinfo_updated{ false };
 
-multimap<pair<int, int>, mount> mount_entries;  // Keyed by device major/minor.
+// Keyed by device major/minor.
+using MountEntries = multimap<pair<int, int>, mount>;
 
 /* Read a line from F.
    Return a string, or empty string on error. */
@@ -168,15 +169,15 @@ static bool read_mount_entry(FILE *f, mount *me)
 
 /* Read mount information from mountinfo_path, update mount_entries and
    num_mount_entries.
-   Return 0 if OK, -1 on error. */
-static int read_mount_entries(void)
+   Return std::nullopt on error. */
+static optional<MountEntries> read_mount_entries(void)
 {
-	FILE *f = fopen(mountinfo_path, "r");
+	FILE *f = fopen(MOUNTINFO_PATH, "r");
 	if (f == nullptr) {
-		return -1;
+		return {};
 	}
 
-	mount_entries.clear();
+	MountEntries mount_entries;
 
 	mount me;
 	while (read_mount_entry(f, &me)) {
@@ -189,7 +190,7 @@ static int read_mount_entries(void)
 		mount_entries.emplace(make_pair(me.dev_major, me.dev_minor), me);
 	}
 	fclose(f);
-	return 0;
+	return mount_entries;
 }
 
 /* Bind mount path list maintenace and top-level interface. */
@@ -209,7 +210,8 @@ static void rebuild_bind_mount_paths(void)
 	if (conf_debug_pruning) {
 		fprintf(stderr, "Rebuilding bind_mount_paths:\n");
 	}
-	if (read_mount_entries() != 0) {
+	optional<MountEntries> mount_entries = read_mount_entries();
+	if (!mount_entries.has_value()) {
 		return;
 	}
 	if (conf_debug_pruning) {
@@ -218,8 +220,8 @@ static void rebuild_bind_mount_paths(void)
 
 	bind_mount_paths.clear();
 
-	for (const auto &[dev_id, me] : mount_entries) {
-		const auto &[first, second] = mount_entries.equal_range(make_pair(me.dev_major, me.dev_minor));
+	for (const auto &[dev_id, me] : *mount_entries) {
+		const auto &[first, second] = mount_entries->equal_range(make_pair(me.dev_major, me.dev_minor));
 		for (auto it = first; it != second; ++it) {
 			const mount &other = it->second;
 			if (other.id == me.id) {
@@ -265,10 +267,9 @@ bool is_bind_mount(const char *path)
 }
 
 /* Initialize state for is_bind_mount(), to read data from MOUNTINFO. */
-void bind_mount_init(const char *mountinfo)
+void bind_mount_init()
 {
-	mountinfo_path = mountinfo;
-	mountinfo_fd = open(mountinfo_path, O_RDONLY);
+	mountinfo_fd = open(MOUNTINFO_PATH, O_RDONLY);
 	if (mountinfo_fd == -1)
 		return;
 	rebuild_bind_mount_paths();

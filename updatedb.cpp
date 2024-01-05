@@ -789,7 +789,7 @@ int main(int argc, char **argv)
 
 	conf_prepare(argc, argv);
 	if (conf_prune_bind_mounts) {
-		bind_mount_init(MOUNTINFO_PATH);
+		bind_mount_init();
 	}
 
 	int fd = open(conf_output.c_str(), O_RDONLY);
