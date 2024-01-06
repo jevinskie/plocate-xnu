@@ -159,10 +159,10 @@ struct entry {
 	dev_t dev;
 };
 
-bool filesystem_is_excluded(const char *path)
+bool filesystem_is_excluded(const string &path)
 {
 	if (conf_debug_pruning) {
-		fprintf(stderr, "Checking whether filesystem `%s' is excluded:\n", path);
+		fprintf(stderr, "Checking whether filesystem `%s' is excluded:\n", path.c_str());
 	}
 	FILE *f = setmntent("/proc/mounts", "r");
 	if (f == nullptr) {
@@ -174,29 +174,22 @@ bool filesystem_is_excluded(const char *path)
 		if (conf_debug_pruning) {
 			fprintf(stderr, " `%s', type `%s'\n", me->mnt_dir, me->mnt_type);
 		}
+		if (path != me->mnt_dir) {
+			continue;
+		}
 		string type(me->mnt_type);
 		for (char &p : type) {
 			p = toupper(p);
 		}
-		if (find(conf_prunefs.begin(), conf_prunefs.end(), type) != conf_prunefs.end()) {
-			/* Paths in /proc/self/mounts contain no symbolic links.  Besides
-		           avoiding a few system calls, avoiding the realpath () avoids hangs
-		           if the filesystem is unavailable hard-mounted NFS. */
-			char *dir = me->mnt_dir;
-			if (conf_debug_pruning) {
-				fprintf(stderr, " => type matches, dir `%s'\n", dir);
-			}
-			bool res = (strcmp(path, dir) == 0);
-			if (dir != me->mnt_dir)
-				free(dir);
-			if (res) {
-				endmntent(f);
-				return true;
-			}
+		bool exclude = (find(conf_prunefs.begin(), conf_prunefs.end(), type) != conf_prunefs.end());
+		if (exclude && conf_debug_pruning) {
+			fprintf(stderr, " => excluded due to filesystem type\n");
 		}
+		endmntent(f);
+		return exclude;
 	}
 	if (conf_debug_pruning) {
-		fprintf(stderr, "...done\n");
+		fprintf(stderr, "...not found in mount list\n");
 	}
 	endmntent(f);
 	return false;
@@ -718,7 +711,7 @@ int scan(const string &path, int fd, dev_t parent_dev, dir_time modified, dir_ti
 			// It would be better to be able to run filesystem_is_excluded()
 			// for cheap on everything and just avoid the stat, but it seems
 			// hard to do that without any kind of raciness.
-			if (filesystem_is_excluded((path_plus_slash + e.name).c_str())) {
+			if (filesystem_is_excluded(path_plus_slash + e.name)) {
 				close(e.fd);
 				e.fd = -1;
 				continue;
@@ -730,7 +723,7 @@ int scan(const string &path, int fd, dev_t parent_dev, dir_time modified, dir_ti
 
 		e.dev = buf.st_dev;
 		if (buf.st_dev != parent_dev) {
-			if (filesystem_is_excluded((path_plus_slash + e.name).c_str())) {
+			if (filesystem_is_excluded(path_plus_slash + e.name)) {
 				close(e.fd);
 				e.fd = -1;
 				continue;
