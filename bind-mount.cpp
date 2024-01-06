@@ -57,6 +57,7 @@ struct mount {
 
 	// Derived properties.
 	bool pruned_due_to_fs_type;
+	bool pruned_due_to_path;
 	bool to_remove;
 };
 
@@ -188,7 +189,9 @@ static bool find_whether_under_pruned(
 		return false;
 	}
 
-	bool result = mount_it->second->pruned_due_to_fs_type ||
+	bool result =
+		mount_it->second->pruned_due_to_fs_type ||
+		mount_it->second->pruned_due_to_path ||
 		(mount_it->second->parent_id != 0 &&
 		 find_whether_under_pruned(mount_it->second->parent_id,
 		                           id_to_mount, id_to_pruned_cache));
@@ -217,12 +220,16 @@ static optional<MountEntries> read_mount_entries(void)
 			}
 			me.pruned_due_to_fs_type =
 				(find(conf_prunefs.begin(), conf_prunefs.end(), fs_type_upper) != conf_prunefs.end());
+			size_t prunepath_index = 0;  // Search the entire list every time.
+			me.pruned_due_to_path =
+				string_list_contains_dir_path(&conf_prunepaths, &prunepath_index, me.mount_point.c_str());
 			mount_entries.emplace(make_pair(me.dev_major, me.dev_minor), me);
 			if (conf_debug_pruning) {
 				fprintf(stderr,
-					" `%s' (%d on %d) is `%s' of `%s' (%u:%u), type `%s' (pruned_fs=%d)\n",
+					" `%s' (%d on %d) is `%s' of `%s' (%u:%u), type `%s' (pruned_fs=%d, pruned_path=%d)\n",
 					me.mount_point.c_str(), me.id, me.parent_id, me.root.c_str(), me.source.c_str(),
-					me.dev_major, me.dev_minor, me.fs_type.c_str(), me.pruned_due_to_fs_type);
+					me.dev_major, me.dev_minor, me.fs_type.c_str(), me.pruned_due_to_fs_type,
+					me.pruned_due_to_path);
 			}
 		}
 		fclose(f);
