@@ -1,4 +1,4 @@
-/* Bind mount detection.  Note: if you change this, change tmpwatch as well.
+/* Bind mount detection.
 
 Copyright (C) 2005, 2007, 2008, 2012 Red Hat, Inc. All rights reserved.
 This copyrighted material is made available to anyone wishing to use, modify,
