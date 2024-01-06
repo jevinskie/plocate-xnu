@@ -25,6 +25,7 @@ any later version.
 #include "conf.h"
 #include "lib.h"
 
+#include <algorithm>
 #include <atomic>
 #include <fcntl.h>
 #include <limits.h>
@@ -39,6 +40,7 @@ any later version.
 #include <sys/time.h>
 #include <thread>
 #include <optional>
+#include <unordered_map>
 
 using namespace std;
 
@@ -52,6 +54,10 @@ struct mount {
 	string mount_point;
 	string fs_type;
 	string source;
+
+	// Derived properties.
+	bool pruned_due_to_fs_type;
+	bool to_remove;
 };
 
 /* Path to mountinfo */
@@ -167,6 +173,29 @@ static bool read_mount_entry(FILE *f, mount *me)
 	return true;
 }
 
+static bool find_whether_under_pruned(
+	int id,
+	const unordered_map<int, mount *> &id_to_mount,
+	unordered_map<int, bool> *id_to_pruned_cache)
+{
+	auto cache_it = id_to_pruned_cache->find(id);
+	if (cache_it != id_to_pruned_cache->end()) {
+		return cache_it->second;
+	}
+	auto mount_it = id_to_mount.find(id);
+	if (mount_it == id_to_mount.end()) {
+		// Should not happen.
+		return false;
+	}
+
+	bool result = mount_it->second->pruned_due_to_fs_type ||
+		(mount_it->second->parent_id != 0 &&
+		 find_whether_under_pruned(mount_it->second->parent_id,
+		                           id_to_mount, id_to_pruned_cache));
+	id_to_pruned_cache->emplace(id, result);
+	return result;
+}
+
 /* Read mount information from mountinfo_path, update mount_entries and
    num_mount_entries.
    Return std::nullopt on error. */
@@ -179,17 +208,53 @@ static optional<MountEntries> read_mount_entries(void)
 
 	MountEntries mount_entries;
 
-	mount me;
-	while (read_mount_entry(f, &me)) {
-		if (conf_debug_pruning) {
-			fprintf(stderr,
-			        " `%s' (%d on %d) is `%s' of `%s' (%u:%u), type `%s'\n",
-			        me.mount_point.c_str(), me.id, me.parent_id, me.root.c_str(), me.source.c_str(),
-			        me.dev_major, me.dev_minor, me.fs_type.c_str());
+	{
+		mount me;
+		while (read_mount_entry(f, &me)) {
+			string fs_type_upper = me.fs_type;
+			for (char &c : fs_type_upper) {
+				c = toupper(c);
+			}
+			me.pruned_due_to_fs_type =
+				(find(conf_prunefs.begin(), conf_prunefs.end(), fs_type_upper) != conf_prunefs.end());
+			mount_entries.emplace(make_pair(me.dev_major, me.dev_minor), me);
+			if (conf_debug_pruning) {
+				fprintf(stderr,
+					" `%s' (%d on %d) is `%s' of `%s' (%u:%u), type `%s' (pruned_fs=%d)\n",
+					me.mount_point.c_str(), me.id, me.parent_id, me.root.c_str(), me.source.c_str(),
+					me.dev_major, me.dev_minor, me.fs_type.c_str(), me.pruned_due_to_fs_type);
+			}
 		}
-		mount_entries.emplace(make_pair(me.dev_major, me.dev_minor), me);
+		fclose(f);
 	}
-	fclose(f);
+
+	// Now propagate pruned status recursively through parent links
+	// (e.g. if /run is tmpfs, then /run/foo should also be pruned).
+	unordered_map<int, mount *> id_to_mount;
+	for (auto &[key, me] : mount_entries) {
+		id_to_mount[me.id] = &me;
+	}
+	unordered_map<int, bool> id_to_pruned_cache;
+	for (auto &[key, me] : mount_entries) {
+		me.to_remove =
+			find_whether_under_pruned(me.id, id_to_mount, &id_to_pruned_cache);
+		if (conf_debug_pruning && me.to_remove) {
+			fprintf(stderr, " `%s' is, or is under, a pruned file system; removing\n",
+				me.mount_point.c_str());
+		}
+	}
+
+	// Now take out those that we won't see due to file system type anyway,
+	// so that we don't inadvertently prefer them to others during bind mount
+	// duplicate detection.
+	for (auto it = mount_entries.begin(); it != mount_entries.end(); ) {
+		if (it->second.to_remove) {
+			it = mount_entries.erase(it);
+		} else {
+			++it;
+		}
+	}
+
 	return mount_entries;
 }
 
