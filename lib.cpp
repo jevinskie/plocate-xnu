@@ -22,8 +22,6 @@ any later version.
 
 #include "lib.h"
 
-#include "db.h"
-
 #include <algorithm>
 #include <arpa/inet.h>
 #include <assert.h>
