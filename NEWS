@@ -1,3 +1,10 @@
+plocate 1.1.22, January 12th, 2024
+
+  - Revert the updatedb change in 1.1.21 that did not open
+    pruned paths; it broke pruning of paths that were not at the root
+    (e.g. /foo/bar, as opposed to /foo). Reported by David Caldwell.
+
+
 plocate 1.1.21, January 6th, 2024
 
   - Improve interactions between pruning and bind mount detection
