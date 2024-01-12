@@ -522,6 +522,13 @@ string ExistingDB::read_next_dictionary() const
 // Takes ownership of fd.
 int scan(const string &path, int fd, dev_t parent_dev, dir_time modified, dir_time db_modified, ExistingDB *existing_db, DatabaseReceiver *corpus, DictionaryBuilder *dict_builder)
 {
+	if (string_list_contains_dir_path(&conf_prunepaths, &conf_prunepaths_index, path)) {
+		if (conf_debug_pruning) {
+			fprintf(stderr, "Skipping `%s': in prunepaths\n", path.c_str());
+		}
+		close(fd);
+		return 0;
+	}
 	if (conf_prune_bind_mounts && is_bind_mount(path.c_str())) {
 		if (conf_debug_pruning) {
 			fprintf(stderr, "Skipping `%s': bind mount\n", path.c_str());
@@ -673,12 +680,6 @@ int scan(const string &path, int fd, dev_t parent_dev, dir_time modified, dir_ti
 		if (find(conf_prunenames.begin(), conf_prunenames.end(), e.name) != conf_prunenames.end()) {
 			if (conf_debug_pruning) {
 				fprintf(stderr, "Skipping `%s': in prunenames\n", e.name.c_str());
-			}
-			continue;
-		}
-		if (string_list_contains_dir_path(&conf_prunepaths, &conf_prunepaths_index, (path_plus_slash + e.name).c_str())) {
-			if (conf_debug_pruning) {
-				fprintf(stderr, "Skipping `%s/%s': in prunepaths\n", path.c_str(), e.name.c_str());
 			}
 			continue;
 		}
