@@ -1,4 +1,4 @@
-project('plocate', 'cpp', default_options: ['buildtype=debugoptimized','cpp_std=c++17'], version: '1.1.17-pre')
+project('plocate', 'cpp', default_options: ['buildtype=debugoptimized','cpp_std=c++17'], version: '1.1.22')
 
 if get_option('locategroup') == ''
 	if target_machine.system() != 'darwin'
@@ -121,7 +121,7 @@ endif
 # of calling into that directory to run make, and we're not
 # replicating their build system, so it has to be manual.
 pfordir = meson.source_root() + '/TurboPFor-Integer-Compression'
-if run_command('[', '-r', pfordir + '/libic.a', ']').returncode() == 0
+if run_command('[', '-r', pfordir + '/libic.a', ']', check: false).returncode() == 0
 	turbopfordep = declare_dependency(
 		include_directories: include_directories('TurboPFor-Integer-Compression'),
 		dependencies: meson.get_compiler('cpp').find_library('ic', dirs: pfordir))

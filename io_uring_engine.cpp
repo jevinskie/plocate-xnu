@@ -41,7 +41,7 @@ IOUringEngine::IOUringEngine(size_t slop_bytes)
 		if (!supports_stat) {
 			dprintf("io_uring on this kernel does not support statx(); will do synchronous access checking.\n");
 		}
-		free(probe);
+		io_uring_free_probe(probe);
 	}
 #endif
 }

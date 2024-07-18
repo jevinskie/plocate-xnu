@@ -14,7 +14,7 @@ of the patterns if multiple are given). It does this by means of
 an index made by
 .BR updatedb (8)
 or (less commonly) converted from another index by
-.BR plocate-build (8).
+.BR plocate\-build (8).
 
 plocate is largely argument-compatible with
 .BR mlocate (1),
@@ -39,10 +39,10 @@ By default, patterns are taken to be substrings to search for.
 If at least one non-escaped globbing metacharacter (*, ? or []) is given,
 that pattern is instead taken to be a glob pattern (which means it needs
 to start and end in * for a substring match). If
-.B --regexp
+.B \-\-regexp
 is given, patterns are instead taken to be (non-anchored) POSIX basic
 regular expressions, and if
-.B --regex
+.B \-\-regex
 is given, patterns are taken to be POSIX extended regular expressions.
 All of this matches
 .BR mlocate (1)
@@ -56,6 +56,16 @@ having read and execute permissions on all parent directories),
 and none that are not, by means of running with the setgid
 bit set to access the index (which is built as root), but by
 testing visibility as the calling user.
+
+.SH EXIT STATUS
+.B plocate
+exits with 0 to indicate that a match was found or that
+.B \-\-help
+or
+.B \-\-version
+were passed. Otherwise,
+.B plocate
+exits with status code 1, indicating that an error occurred or that no matches were found.
 
 .SH OPTIONS
 .TP
@@ -117,7 +127,7 @@ Print entry names without quoting. Normally,
 .B plocate
 will escape special characters in filenames, so that they are safe for
 consumption by typical shells (similar to the GNU coreutils
-.I shell-escape-always
+.I shell\-escape\-always
 quoting style), unless printing to a pipe, but this options will
 turn off such quoting.
 
@@ -146,7 +156,7 @@ regular expressions.
 .TP
 \fB\-w\fR, \fB\-\-wholename\fR
 Match against the entire path name. This is the default,
-so unless \fB-b\fR is given first (see above), it will not do
+so unless \fB\-b\fR is given first (see above), it will not do
 anything. This option thus exists only as compatibility with
 .BR mlocate (1).
 
@@ -171,6 +181,6 @@ as for \fB\-\-database\fR.
 Steinar H. Gunderson <steinar+plocate@gunderson.no>
 
 .SH SEE ALSO
-\fBplocate-build\fP(8),
+\fBplocate\-build\fP(8),
 \fBmlocate\fP(1),
 \fBupdatedb\fP(8)

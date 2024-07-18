@@ -30,8 +30,6 @@ any later version.
 #include <sys/types.h>
 #include <vector>
 
-#define _(X) (X)
-
 /* Compare two path names using the database directory order. This is not
    exactly strcmp () order: "a" < "a.b", so "a/z" < "a.b". */
 extern int dir_path_cmp(const std::string &a, const std::string &b);

@@ -64,7 +64,7 @@ Add entries in white-space-separated list \fINAMES\fR to \fBPRUNENAMES\fR.
 Add entries in white-space-separated list \fIPATHS\fR to \fBPRUNEPATHS\fR.
 
 .TP
-\fB\-e\fR, \fB\-\-add-single-prunepath\fB \fIPATH\fR
+\fB\-\-add-single-prunepath\fB \fIPATH\fR
 Add \fIPATH\fR to \fBPRUNEPATHS\fR. Note that this is currently the only way
 to add a path with a space in it.
 
