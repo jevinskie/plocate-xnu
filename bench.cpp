@@ -20,11 +20,15 @@ using namespace std::chrono;
 
 bool use_debug = false;
 
-int main(void)
+int main(int argc, const char *argv[])
 {
-	int fd = open("plocate.db", O_RDONLY);
+	if (argc != 2) {
+		fprintf(stderr, "Usage: bench <plocate.db path>\n");
+		return 1;
+	}
+	int fd = open(argv[1], O_RDONLY);
 	if (fd == -1) {
-		perror("plocate.db");
+		perror(argv[1]);
 		exit(1);
 	}
 

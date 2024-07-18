@@ -41,7 +41,6 @@ struct mntent *getmntent(FILE *fp)
 	if (ctx->idx < ctx->num_mounts) {
 		res = &ctx->mntents[ctx->idx++];
 	}
-	assert(res);
 	return res;
 }
 

@@ -1,4 +1,4 @@
-project('plocate', 'cpp', default_options: ['buildtype=debugoptimized','cpp_std=c++17'], version: '1.1.22')
+project('plocate', 'cpp', default_options: ['buildtype=release', 'cpp_std=c++17', 'b_lto=true'], version: '1.1.22')
 
 if get_option('locategroup') == ''
 	if target_machine.system() != 'darwin'
@@ -123,7 +123,7 @@ endif
 pfordir = meson.source_root() + '/TurboPFor-Integer-Compression'
 if run_command('[', '-r', pfordir + '/libic.a', ']', check: false).returncode() == 0
 	turbopfordep = declare_dependency(
-		include_directories: include_directories('TurboPFor-Integer-Compression'),
+		include_directories: include_directories('TurboPFor-Integer-Compression/lib/include_'),
 		dependencies: meson.get_compiler('cpp').find_library('ic', dirs: pfordir))
 	executable('bench', ['bench.cpp', 'io_uring_engine.cpp', 'turbopfor.cpp', 'complete_pread.cpp'],
 		dependencies: [uringdep, turbopfordep],
