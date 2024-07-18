@@ -192,7 +192,7 @@ void parse_trigrams_ignore_case(const string &needle, vector<TrigramDisjunction>
 			ret = wctomb(buf.get(), towupper(ch));
 			alt.push_back(string(buf.get(), ret));
 		}
-		alternatives_for_cp.push_back(move(alt));
+		alternatives_for_cp.push_back(std::move(alt));
 	}
 
 	// Now generate all possible byte strings from those code points in order;
@@ -237,10 +237,10 @@ void parse_trigrams_ignore_case(const string &needle, vector<TrigramDisjunction>
 					if (read_trigram(state.buffered, 0) == PREMATURE_END_UNIGRAM) {
 						need_another_pass = true;
 					}
-					new_states.push_back(move(new_state));
+					new_states.push_back(std::move(new_state));
 				}
 			}
-			states = move(new_states);
+			states = std::move(new_states);
 		} while (need_another_pass);
 
 		// OK, so now we have a bunch of states, and all of them are at least
@@ -267,9 +267,9 @@ void parse_trigrams_ignore_case(const string &needle, vector<TrigramDisjunction>
 		if (!any_wildcard) {
 			TrigramDisjunction new_pt;
 			new_pt.remaining_trigrams_to_read = trigram_alternatives.size();
-			new_pt.trigram_alternatives = move(trigram_alternatives);
+			new_pt.trigram_alternatives = std::move(trigram_alternatives);
 			new_pt.max_num_docids = 0;
-			trigram_groups->push_back(move(new_pt));
+			trigram_groups->push_back(std::move(new_pt));
 		}
 
 		if (states.size() > 100) {
@@ -301,6 +301,6 @@ void parse_trigrams(const string &needle, bool ignore_case, vector<TrigramDisjun
 		new_pt.remaining_trigrams_to_read = 1;
 		new_pt.trigram_alternatives.push_back(trgm);
 		new_pt.max_num_docids = 0;
-		trigram_groups->push_back(move(new_pt));
+		trigram_groups->push_back(std::move(new_pt));
 	}
 }

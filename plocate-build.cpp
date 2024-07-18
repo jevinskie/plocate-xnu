@@ -117,7 +117,7 @@ void read_plaintext(FILE *fp, DatabaseReceiver *receiver)
 		}
 		if (!s.empty() && s.back() == '\n')
 			s.pop_back();
-		receiver->add_file(move(s), unknown_dir_time);
+		receiver->add_file(std::move(s), unknown_dir_time);
 	}
 }
 

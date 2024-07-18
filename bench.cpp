@@ -45,7 +45,7 @@ int main(void)
 		string str;
 		str.resize(len);
 		complete_pread(fd, &str[0], len, ht[i].offset);
-		posting_lists.emplace_back(move(str), ht[i].num_docids);
+		posting_lists.emplace_back(std::move(str), ht[i].num_docids);
 		longest_pl = std::max(ht[i].num_docids, longest_pl);
 		most_bytes_pl = std::max(len, most_bytes_pl);
 		posting_list_bytes += len;

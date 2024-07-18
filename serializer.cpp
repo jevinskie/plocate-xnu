@@ -156,7 +156,7 @@ void Serializer::print(uint64_t seq, uint64_t skip, const string msg)
 	}
 
 	if (next_seq != seq) {
-		pending.push(Element{ seq, skip, move(msg) });
+		pending.push(Element{ seq, skip, std::move(msg) });
 		return;
 	}
 

@@ -130,10 +130,10 @@ void DictionaryBuilder::flush_block()
 	if (keep_current_block) {
 		if (slot_for_current_block == -1) {
 			lengths.push_back(current_block.size());
-			sampled_blocks.push_back(move(current_block));
+			sampled_blocks.push_back(std::move(current_block));
 		} else {
 			lengths[slot_for_current_block] = current_block.size();
-			sampled_blocks[slot_for_current_block] = move(current_block);
+			sampled_blocks[slot_for_current_block] = std::move(current_block);
 		}
 	}
 	current_block.clear();
@@ -565,12 +565,12 @@ DatabaseReceiver *DatabaseBuilder::start_corpus(bool store_dir_times)
 
 void DatabaseBuilder::set_next_dictionary(std::string next_dictionary)
 {
-	this->next_dictionary = move(next_dictionary);
+	this->next_dictionary = std::move(next_dictionary);
 }
 
 void DatabaseBuilder::set_conf_block(std::string conf_block)
 {
-	this->conf_block = move(conf_block);
+	this->conf_block = std::move(conf_block);
 }
 
 void DatabaseBuilder::finish_corpus()

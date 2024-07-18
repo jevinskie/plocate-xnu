@@ -57,12 +57,12 @@ void IOUringEngine::submit_stat(const char *path [[maybe_unused]], std::function
 			fprintf(stderr, "io_uring_get_sqe: %s\n", strerror(errno));
 			exit(1);
 		}
-		submit_stat_internal(sqe, strdup(path), move(cb));
+		submit_stat_internal(sqe, strdup(path), std::move(cb));
 	} else {
 		QueuedStat qs;
-		qs.cb = move(cb);
+		qs.cb = std::move(cb);
 		qs.pathname = strdup(path);
-		queued_stats.push(move(qs));
+		queued_stats.push(std::move(qs));
 	}
 #endif
 }
@@ -85,9 +85,9 @@ void IOUringEngine::submit_read(int fd, size_t len, off_t offset, function<void(
 			fprintf(stderr, "io_uring_get_sqe: %s\n", strerror(errno));
 			exit(1);
 		}
-		submit_read_internal(sqe, fd, len, offset, move(cb));
+		submit_read_internal(sqe, fd, len, offset, std::move(cb));
 	} else {
-		queued_reads.push(QueuedRead{ fd, len, offset, move(cb) });
+		queued_reads.push(QueuedRead{ fd, len, offset, std::move(cb) });
 	}
 #endif
 }
@@ -103,7 +103,7 @@ void IOUringEngine::submit_read_internal(io_uring_sqe *sqe, int fd, size_t len, 
 
 	PendingRead *pending = new PendingRead;
 	pending->op = OP_READ;
-	pending->read_cb = move(cb);
+	pending->read_cb = std::move(cb);
 	pending->read.buf = buf;
 	pending->read.len = len;
 	pending->read.fd = fd;
@@ -119,7 +119,7 @@ void IOUringEngine::submit_stat_internal(io_uring_sqe *sqe, char *path, std::fun
 {
 	PendingRead *pending = new PendingRead;
 	pending->op = OP_STAT;
-	pending->stat_cb = move(cb);
+	pending->stat_cb = std::move(cb);
 	pending->stat.pathname = path;
 	pending->stat.buf = new struct statx;
 
@@ -228,7 +228,7 @@ void IOUringEngine::finish()
 				exit(1);
 			}
 			QueuedStat &qs = queued_stats.front();
-			submit_stat_internal(sqe, qs.pathname, move(qs.cb));
+			submit_stat_internal(sqe, qs.pathname, std::move(qs.cb));
 			queued_stats.pop();
 			anything_to_submit = true;
 		}
@@ -241,7 +241,7 @@ void IOUringEngine::finish()
 				exit(1);
 			}
 			QueuedRead &qr = queued_reads.front();
-			submit_read_internal(sqe, qr.fd, qr.len, qr.offset, move(qr.cb));
+			submit_read_internal(sqe, qr.fd, qr.len, qr.offset, std::move(qr.cb));
 			queued_reads.pop();
 			anything_to_submit = true;
 		}

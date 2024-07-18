@@ -232,7 +232,7 @@ public:
 	pair<string, dir_time> read_next();
 	void unread(pair<string, dir_time> record)
 	{
-		unread_record = move(record);
+		unread_record = std::move(record);
 	}
 	string read_next_dictionary() const;
 	bool get_error() const { return error; }
@@ -352,7 +352,7 @@ ExistingDB::~ExistingDB()
 pair<string, dir_time> ExistingDB::read_next()
 {
 	if (!unread_record.first.empty()) {
-		auto ret = move(unread_record);
+		auto ret = std::move(unread_record);
 		unread_record.first.clear();
 		return ret;
 	}
@@ -419,7 +419,7 @@ pair<string, dir_time> ExistingDB::read_next()
 			return { "", not_a_dir };
 		}
 		block[block.size() - 1] = '\0';
-		current_filename_block = move(block);
+		current_filename_block = std::move(block);
 		current_filename_ptr = current_filename_block.data();
 		current_filename_end = current_filename_block.data() + current_filename_block.size();
 		++current_docid;
@@ -495,7 +495,7 @@ pair<string, dir_time> ExistingDB::read_next()
 
 	if (*current_dir_time_ptr == 0) {
 		++current_dir_time_ptr;
-		return { move(filename), not_a_dir };
+		return { std::move(filename), not_a_dir };
 	} else {
 		++current_dir_time_ptr;
 		dir_time dt;
@@ -503,7 +503,7 @@ pair<string, dir_time> ExistingDB::read_next()
 		current_dir_time_ptr += sizeof(dt.sec);
 		memcpy(&dt.nsec, current_dir_time_ptr, sizeof(dt.nsec));
 		current_dir_time_ptr += sizeof(dt.nsec);
-		return { move(filename), dt };
+		return { std::move(filename), dt };
 	}
 }
 
@@ -560,7 +560,7 @@ int scan(const string &path, int fd, dev_t parent_dev, dir_time modified, dir_ti
 			break;
 		}
 		if (dir_path_cmp(path, record.first) <= 0) {
-			existing_db->unread(move(record));
+			existing_db->unread(std::move(record));
 			break;
 		}
 	}
@@ -576,13 +576,13 @@ int scan(const string &path, int fd, dev_t parent_dev, dir_time modified, dir_ti
 
 		if (record.first.rfind(path_plus_slash, 0) != 0) {
 			// No longer starts with path, so we're in a different directory.
-			existing_db->unread(move(record));
+			existing_db->unread(std::move(record));
 			break;
 		}
 		if (record.first.find_first_of('/', path_plus_slash.size()) != string::npos) {
 			// Entered into a subdirectory of a subdirectory.
 			// Due to our ordering, this also means we're done.
-			existing_db->unread(move(record));
+			existing_db->unread(std::move(record));
 			break;
 		}
 
@@ -600,7 +600,7 @@ int scan(const string &path, int fd, dev_t parent_dev, dir_time modified, dir_ti
 		// Not changed since the last database, so we can replace the readdir()
 		// by reading from the database. (We still need to open and stat everything,
 		// though, but that happens in a later step.)
-		entries = move(db_entries);
+		entries = std::move(db_entries);
 		if (conf_verbose) {
 			for (const entry &e : entries) {
 				printf("%s/%s\n", path.c_str(), e.name.c_str());
@@ -652,7 +652,7 @@ int scan(const string &path, int fd, dev_t parent_dev, dir_time modified, dir_ti
 			if (conf_verbose) {
 				printf("%s/%s\n", path.c_str(), de->d_name);
 			}
-			entries.push_back(move(e));
+			entries.push_back(std::move(e));
 		}
 
 		sort(entries.begin(), entries.end(), [](const entry &a, const entry &b) {

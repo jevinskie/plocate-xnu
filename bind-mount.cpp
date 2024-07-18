@@ -134,7 +134,7 @@ static int parse_mount_string(string *dest, const char **str)
 done:
 	*str = src;
 	if (dest != nullptr) {
-		*dest = move(mount_string);
+		*dest = std::move(mount_string);
 	}
 	return 0;
 }

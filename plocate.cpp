@@ -130,7 +130,7 @@ Corpus::~Corpus()
 void Corpus::find_trigram(uint32_t trgm, function<void(const Trigram *trgmptr, size_t len)> cb)
 {
 	uint32_t bucket = hash_trigram(trgm, hdr.hashtable_size);
-	engine->submit_read(fd, sizeof(Trigram) * (hdr.extra_ht_slots + 2), hdr.hash_table_offset_bytes + sizeof(Trigram) * bucket, [this, trgm, cb{ move(cb) }](string_view s) {
+	engine->submit_read(fd, sizeof(Trigram) * (hdr.extra_ht_slots + 2), hdr.hash_table_offset_bytes + sizeof(Trigram) * bucket, [this, trgm, cb{ std::move(cb) }](string_view s) {
 		const Trigram *trgmptr = reinterpret_cast<const Trigram *>(s.data());
 		for (unsigned i = 0; i < hdr.extra_ht_slots + 1; ++i) {
 			if (trgmptr[i].trgm == trgm) {
@@ -148,7 +148,7 @@ void Corpus::get_compressed_filename_block(uint32_t docid, function<void(string_
 {
 	// Read the file offset from this docid and the next one.
 	// This is always allowed, since we have a sentinel block at the end.
-	engine->submit_read(fd, sizeof(uint64_t) * 2, offset_for_block(docid), [this, cb{ move(cb) }](string_view s) {
+	engine->submit_read(fd, sizeof(uint64_t) * 2, offset_for_block(docid), [this, cb{ std::move(cb) }](string_view s) {
 		const uint64_t *ptr = reinterpret_cast<const uint64_t *>(s.data());
 		off_t offset = ptr[0];
 		size_t len = ptr[1] - ptr[0];
@@ -301,7 +301,7 @@ public:
 		if (msg.empty() && !wt->results.empty() && wt->results.back().seq + wt->results.back().skip == seq) {
 			wt->results.back().skip += skip;
 		} else {
-			wt->results.emplace_back(WorkerThread::Result{ seq, skip, move(msg) });
+			wt->results.emplace_back(WorkerThread::Result{ seq, skip, std::move(msg) });
 		}
 	}
 
@@ -314,10 +314,10 @@ void deliver_results(WorkerThread *wt, Serializer *serializer)
 	vector<WorkerThread::Result> results;
 	{
 		lock_guard<mutex> lock(wt->result_mu);
-		results = move(wt->results);
+		results = std::move(wt->results);
 	}
 	for (const WorkerThread::Result &result : results) {
-		serializer->print(result.seq, result.skip, move(result.msg));
+		serializer->print(result.seq, result.skip, std::move(result.msg));
 	}
 }
 
@@ -378,7 +378,7 @@ uint64_t scan_all_docids(const vector<Needle> &needles, int fd, const Corpus &co
 					if (done && work_queue.empty()) {
 						return;
 					}
-					tie(io_docid, last_docid, compressed) = move(work_queue.front());
+					tie(io_docid, last_docid, compressed) = std::move(work_queue.front());
 					work_queue.pop_front();
 					queue_removed.notify_all();
 				}
@@ -405,7 +405,7 @@ uint64_t scan_all_docids(const vector<Needle> &needles, int fd, const Corpus &co
 		{
 			unique_lock lock(mu);
 			queue_removed.wait(lock, [&work_queue] { return work_queue.size() < 256; });  // Allow ~2MB of data queued up.
-			work_queue.emplace_back(io_docid, last_docid, move(compressed));
+			work_queue.emplace_back(io_docid, last_docid, std::move(compressed));
 			queue_added.notify_one();  // Avoid the thundering herd.
 		}
 
@@ -434,7 +434,7 @@ uint64_t scan_all_docids(const vector<Needle> &needles, int fd, const Corpus &co
 bool new_posting_list_read(TrigramDisjunction *td, vector<uint32_t> decoded, vector<uint32_t> *cur_candidates, vector<uint32_t> *tmp)
 {
 	if (td->docids.empty()) {
-		td->docids = move(decoded);
+		td->docids = std::move(decoded);
 	} else {
 		tmp->clear();
 		set_union(decoded.begin(), decoded.end(), td->docids.begin(), td->docids.end(), back_inserter(*tmp));
@@ -453,7 +453,7 @@ bool new_posting_list_read(TrigramDisjunction *td, vector<uint32_t> decoded, vec
 			dprintf("  ... all reads done for OR group %u (%zu docids)\n",
 			        td->index, td->docids.size());
 		}
-		*cur_candidates = move(td->docids);
+		*cur_candidates = std::move(td->docids);
 	} else {
 		tmp->clear();
 		set_intersection(cur_candidates->begin(), cur_candidates->end(),
@@ -795,13 +795,13 @@ void parse_dbpaths(const char *ptr, vector<string> *output)
 		}
 		if (*ptr == ':') {
 			// Separator.
-			output->push_back(move(str));
+			output->push_back(std::move(str));
 			++ptr;
 			continue;
 		}
 		str.push_back(*ptr++);
 	}
-	output->push_back(move(str));
+	output->push_back(std::move(str));
 }
 
 void usage()
@@ -983,7 +983,7 @@ int main(int argc, char **argv)
 			needle.type = Needle::STRSTR;
 			needle.str = unescape_glob_to_plain_string(needle.str);
 		}
-		needles.push_back(move(needle));
+		needles.push_back(std::move(needle));
 	}
 	if (needles.empty()) {
 		fprintf(stderr, "plocate: no pattern to search for specified\n");
