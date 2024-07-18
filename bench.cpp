@@ -6,7 +6,7 @@
 #include <unistd.h>
 
 #define dprintf(...)
-//#define dprintf(...) fprintf(stderr, __VA_ARGS__);
+// #define dprintf(...) fprintf(stderr, __VA_ARGS__);
 
 #include "complete_pread.h"
 #include "db.h"
@@ -59,7 +59,7 @@ int main(void)
 
 	size_t num_decode_errors = 0, num_encode_errors = 0;
 	for (auto &[pl, num_docids] : posting_lists) {
-		//fprintf(stderr, "%zu bytes, %u docids\n", pl.size(), num_docids);
+		// fprintf(stderr, "%zu bytes, %u docids\n", pl.size(), num_docids);
 		vector<uint32_t> out1, out2;
 		out1.resize(num_docids + 128);
 		out2.resize(num_docids + 128);

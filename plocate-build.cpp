@@ -190,7 +190,7 @@ void usage()
 		"\n"
 		"  -b, --block-size SIZE  number of filenames to store in each block (default 32)\n"
 		"  -p, --plaintext        input is a plaintext file, not an mlocate database\n"
-	        "  -l, --require-visibility FLAG  check visibility before reporting files\n"
+		"  -l, --require-visibility FLAG  check visibility before reporting files\n"
 		"      --help             print this help\n"
 		"      --version          print version information\n");
 }
@@ -250,7 +250,7 @@ int main(int argc, char **argv)
 		case 'l':
 			if (!parse_bool(optarg, &check_visibility) != 0) {
 				fprintf(stderr, "plocate-build: invalid value `%s' for --%s\n",
-					 optarg, "require-visibility");
+				        optarg, "require-visibility");
 				exit(EXIT_FAILURE);
 			}
 			break;

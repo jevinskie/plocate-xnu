@@ -30,6 +30,7 @@ any later version.
 #include <fcntl.h>
 #include <limits.h>
 #include <map>
+#include <optional>
 #include <poll.h>
 #include <stddef.h>
 #include <stdio.h>
@@ -39,7 +40,6 @@ any later version.
 #include <sys/stat.h>
 #include <sys/time.h>
 #include <thread>
-#include <optional>
 #include <unordered_map>
 
 using namespace std;
@@ -226,10 +226,10 @@ static optional<MountEntries> read_mount_entries(void)
 			mount_entries.emplace(make_pair(me.dev_major, me.dev_minor), me);
 			if (conf_debug_pruning) {
 				fprintf(stderr,
-					" `%s' (%d on %d) is `%s' of `%s' (%u:%u), type `%s' (pruned_fs=%d, pruned_path=%d)\n",
-					me.mount_point.c_str(), me.id, me.parent_id, me.root.c_str(), me.source.c_str(),
-					me.dev_major, me.dev_minor, me.fs_type.c_str(), me.pruned_due_to_fs_type,
-					me.pruned_due_to_path);
+				        " `%s' (%d on %d) is `%s' of `%s' (%u:%u), type `%s' (pruned_fs=%d, pruned_path=%d)\n",
+				        me.mount_point.c_str(), me.id, me.parent_id, me.root.c_str(), me.source.c_str(),
+				        me.dev_major, me.dev_minor, me.fs_type.c_str(), me.pruned_due_to_fs_type,
+				        me.pruned_due_to_path);
 			}
 		}
 		fclose(f);
@@ -247,14 +247,14 @@ static optional<MountEntries> read_mount_entries(void)
 			find_whether_under_pruned(me.id, id_to_mount, &id_to_pruned_cache);
 		if (conf_debug_pruning && me.to_remove) {
 			fprintf(stderr, " `%s' is, or is under, a pruned file system; removing\n",
-				me.mount_point.c_str());
+			        me.mount_point.c_str());
 		}
 	}
 
 	// Now take out those that we won't see due to file system type anyway,
 	// so that we don't inadvertently prefer them to others during bind mount
 	// duplicate detection.
-	for (auto it = mount_entries.begin(); it != mount_entries.end(); ) {
+	for (auto it = mount_entries.begin(); it != mount_entries.end();) {
 		if (it->second.to_remove) {
 			it = mount_entries.erase(it);
 		} else {

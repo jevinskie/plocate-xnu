@@ -37,8 +37,8 @@ any later version.
 
 #ifdef __APPLE__
 const char *program_invocation_name;
-__attribute__((constructor))
-static void init_program_invocation_name(void) {
+__attribute__((constructor)) static void init_program_invocation_name(void)
+{
 	program_invocation_name = getprogname();
 }
 #endif
@@ -183,7 +183,7 @@ uc_lex(void)
 		while ((c = getc_unlocked(uc_file)) != '"') {
 			if (c == EOF || c == '\n') {
 				fprintf(stderr, "%s:%u: missing closing `\"'\n",
-					UPDATEDB_CONF, uc_line);
+				        UPDATEDB_CONF, uc_line);
 				exit(EXIT_FAILURE);
 			}
 			uc_lex_buf.push_back(c);
@@ -220,10 +220,10 @@ parse_updatedb_conf(void)
 
 	uc_file = fopen(UPDATEDB_CONF, "r");
 	if (uc_file == NULL) {
-	        if (errno != ENOENT) {
-		        perror(UPDATEDB_CONF);
+		if (errno != ENOENT) {
+			perror(UPDATEDB_CONF);
 			exit(EXIT_FAILURE);
-	        }
+		}
 		return;
 	}
 	flockfile(uc_file);
@@ -262,17 +262,17 @@ parse_updatedb_conf(void)
 
 		case UCT_IDENTIFIER:
 			fprintf(stderr, "%s:%u: unknown variable: `%s'\n",
-				UPDATEDB_CONF, uc_line, uc_lex_buf.c_str());
+			        UPDATEDB_CONF, uc_line, uc_lex_buf.c_str());
 			exit(EXIT_FAILURE);
 
 		default:
 			fprintf(stderr, "%s:%u: variable name expected\n",
-				UPDATEDB_CONF, uc_line);
+			        UPDATEDB_CONF, uc_line);
 			exit(EXIT_FAILURE);
 		}
 		if (*had_var != false) {
 			fprintf(stderr, "%s:%u: variable `%s' was already defined\n",
-				UPDATEDB_CONF, uc_line, uc_lex_buf.c_str());
+			        UPDATEDB_CONF, uc_line, uc_lex_buf.c_str());
 			exit(EXIT_FAILURE);
 		}
 		*had_var = true;
@@ -280,19 +280,19 @@ parse_updatedb_conf(void)
 		token = uc_lex();
 		if (token != UCT_EQUAL) {
 			fprintf(stderr, "%s:%u: `=' expected after variable name\n",
-				UPDATEDB_CONF, uc_line);
+			        UPDATEDB_CONF, uc_line);
 			exit(EXIT_FAILURE);
 		}
 		token = uc_lex();
 		if (token != UCT_QUOTED) {
 			fprintf(stderr, "%s:%u: value in quotes expected after `='\n",
-				UPDATEDB_CONF, uc_line);
+			        UPDATEDB_CONF, uc_line);
 			exit(EXIT_FAILURE);
 		}
 		if (var_token == UCT_PRUNE_BIND_MOUNTS) {
 			if (parse_bool(&conf_prune_bind_mounts, uc_lex_buf.c_str()) != 0) {
 				fprintf(stderr, "%s:%u: invalid value `%s' of PRUNE_BIND_MOUNTS\n",
-					UPDATEDB_CONF, uc_line, uc_lex_buf.c_str());
+				        UPDATEDB_CONF, uc_line, uc_lex_buf.c_str());
 				exit(EXIT_FAILURE);
 			}
 		} else if (var_token == UCT_PRUNEFS)
@@ -306,7 +306,7 @@ parse_updatedb_conf(void)
 		token = uc_lex();
 		if (token != UCT_EOL && token != UCT_EOF) {
 			fprintf(stderr, "%s:%u: unexpected data after variable value\n",
-				UPDATEDB_CONF, uc_line);
+			        UPDATEDB_CONF, uc_line);
 			exit(EXIT_FAILURE);
 		}
 		/* Fall through */
@@ -332,35 +332,35 @@ static void
 help(void)
 {
 	printf("Usage: updatedb [OPTION]...\n"
-	         "Update a plocate database.\n"
-	         "\n"
-	         "  -f, --add-prunefs FS           omit also FS (space-separated)\n"
-	         "  -n, --add-prunenames NAMES     omit also NAMES (space-separated)\n"
-	         "  -e, --add-prunepaths PATHS     omit also PATHS (space-separated)\n"
-	         "      --add-single-prunepath PATH  omit also PATH\n"
-	         "  -U, --database-root PATH       the subtree to store in "
-	         "database (default \"/\")\n"
-	         "  -h, --help                     print this help\n"
-	         "  -o, --output FILE              database to update (default\n"
-	         "                                 `%s')\n"
-	         "  -b, --block-size SIZE          number of filenames to store\n"
-	         "                                 in each block (default 32)\n"
-	         "      --prune-bind-mounts FLAG   omit bind mounts (default "
-	         "\"no\")\n"
-	         "      --prunefs FS               filesystems to omit from "
-	         "database\n"
-	         "      --prunenames NAMES         directory names to omit from "
-	         "database\n"
-	         "      --prunepaths PATHS         paths to omit from database\n"
-	         "  -l, --require-visibility FLAG  check visibility before "
-	         "reporting files\n"
-	         "                                 (default \"yes\")\n"
-	         "  -v, --verbose                  print paths of files as they "
-	         "are found\n"
-	         "  -V, --version                  print version information\n"
-	         "\n"
-	         "The configuration defaults to values read from\n"
-	         "`%s'.\n",
+	       "Update a plocate database.\n"
+	       "\n"
+	       "  -f, --add-prunefs FS           omit also FS (space-separated)\n"
+	       "  -n, --add-prunenames NAMES     omit also NAMES (space-separated)\n"
+	       "  -e, --add-prunepaths PATHS     omit also PATHS (space-separated)\n"
+	       "      --add-single-prunepath PATH  omit also PATH\n"
+	       "  -U, --database-root PATH       the subtree to store in "
+	       "database (default \"/\")\n"
+	       "  -h, --help                     print this help\n"
+	       "  -o, --output FILE              database to update (default\n"
+	       "                                 `%s')\n"
+	       "  -b, --block-size SIZE          number of filenames to store\n"
+	       "                                 in each block (default 32)\n"
+	       "      --prune-bind-mounts FLAG   omit bind mounts (default "
+	       "\"no\")\n"
+	       "      --prunefs FS               filesystems to omit from "
+	       "database\n"
+	       "      --prunenames NAMES         directory names to omit from "
+	       "database\n"
+	       "      --prunepaths PATHS         paths to omit from database\n"
+	       "  -l, --require-visibility FLAG  check visibility before "
+	       "reporting files\n"
+	       "                                 (default \"yes\")\n"
+	       "  -v, --verbose                  print paths of files as they "
+	       "are found\n"
+	       "  -V, --version                  print version information\n"
+	       "\n"
+	       "The configuration defaults to values read from\n"
+	       "`%s'.\n",
 	       DBFILE, UPDATEDB_CONF);
 	printf("\n"
 	       "Report bugs to %s.\n",
@@ -379,9 +379,9 @@ prepend_cwd(const string &path)
 		buf.resize(buf.size() * 1.5);
 	while ((res = getcwd(buf.data(), buf.size())) == NULL && errno == ERANGE);
 	if (res == NULL) {
-	        fprintf(stderr, "%s: %s: can not get current working directory\n",
-			program_invocation_name, strerror(errno));
-	        exit(EXIT_FAILURE);
+		fprintf(stderr, "%s: %s: can not get current working directory\n",
+		        program_invocation_name, strerror(errno));
+		exit(EXIT_FAILURE);
 	}
 	buf.resize(strlen(buf.data()));
 	return buf + '/' + path;
@@ -435,7 +435,7 @@ parse_arguments(int argc, char *argv[])
 			exit(EXIT_FAILURE);
 
 		case 'B':
-		        if (got_prune_bind_mounts != false) {
+			if (got_prune_bind_mounts != false) {
 				fprintf(stderr, "%s: --%s would override earlier command-line argument\n",
 				        program_invocation_name, "prune-bind-mounts");
 				exit(EXIT_FAILURE);
@@ -462,8 +462,8 @@ parse_arguments(int argc, char *argv[])
 		case 'N':
 			if (prunenames_changed != false) {
 				fprintf(stderr, "%s: --%s would override earlier command-line argument\n",
-                                        program_invocation_name, "prunenames");
-                                exit(EXIT_FAILURE);
+				        program_invocation_name, "prunenames");
+				exit(EXIT_FAILURE);
 			}
 			prunenames_changed = true;
 			conf_prunenames.clear();
@@ -473,8 +473,8 @@ parse_arguments(int argc, char *argv[])
 		case 'P':
 			if (prunepaths_changed != false) {
 				fprintf(stderr, "%s: --%s would override earlier command-line argument\n",
-                                        program_invocation_name, "prunepaths");
-                                exit(EXIT_FAILURE);
+				        program_invocation_name, "prunepaths");
+				exit(EXIT_FAILURE);
 			}
 			prunepaths_changed = true;
 			conf_prunepaths.clear();
@@ -484,13 +484,13 @@ parse_arguments(int argc, char *argv[])
 		case 'U':
 			if (conf_scan_root != NULL) {
 				fprintf(stderr, "%s: --%s specified twice\n",
-					program_invocation_name, "database-root");
+				        program_invocation_name, "database-root");
 				exit(EXIT_FAILURE);
 			}
 			conf_scan_root = realpath(optarg, nullptr);
 			if (conf_scan_root == NULL) {
 				fprintf(stderr, "%s: %s: invalid value `%s' of --%s\n",
-					program_invocation_name, strerror(errno), optarg, "database-root");
+				        program_invocation_name, strerror(errno), optarg, "database-root");
 				exit(EXIT_FAILURE);
 			}
 			break;
@@ -526,14 +526,14 @@ parse_arguments(int argc, char *argv[])
 		case 'l':
 			if (got_visibility != false) {
 				fprintf(stderr, "%s: --%s specified twice\n",
-                                        program_invocation_name, "require-visibility");
-                                exit(EXIT_FAILURE);
+				        program_invocation_name, "require-visibility");
+				exit(EXIT_FAILURE);
 			}
 
 			got_visibility = true;
 			if (parse_bool(&conf_check_visibility, optarg) != 0) {
 				fprintf(stderr, "%s: invalid value `%s' of --%s",
-					program_invocation_name, optarg, "require-visibility");
+				        program_invocation_name, optarg, "require-visibility");
 				exit(EXIT_FAILURE);
 			}
 			break;
@@ -546,7 +546,7 @@ parse_arguments(int argc, char *argv[])
 		case 'o':
 			if (!conf_output.empty()) {
 				fprintf(stderr, "%s: --%s specified twice",
-					program_invocation_name, "output");
+				        program_invocation_name, "output");
 				exit(EXIT_FAILURE);
 			}
 			conf_output = optarg;
@@ -575,7 +575,7 @@ parse_arguments(int argc, char *argv[])
 options_done:
 	if (optind != argc) {
 		fprintf(stderr, "%s: unexpected operand on command line",
-			program_invocation_name);
+		        program_invocation_name);
 		exit(EXIT_FAILURE);
 	}
 	if (conf_scan_root == NULL) {

@@ -36,7 +36,7 @@
 #include "turbopfor-common.h"
 
 #define dprintf(...)
-//#define dprintf(...) fprintf(stderr, __VA_ARGS__);
+// #define dprintf(...) fprintf(stderr, __VA_ARGS__);
 
 #ifndef SUPPRESS_DEFAULT
 // Forward declarations to declare to the template code below that they exist.
@@ -87,7 +87,7 @@ Docid read_le(const void *in)
 template<class Docid>
 const unsigned char *read_baseval(const unsigned char *in, Docid *out)
 {
-	//fprintf(stderr, "baseval: 0x%02x 0x%02x 0x%02x 0x%02x\n", in[0], in[1], in[2], in[3]);
+	// fprintf(stderr, "baseval: 0x%02x 0x%02x 0x%02x 0x%02x\n", in[0], in[1], in[2], in[3]);
 	if (*in < 128) {
 		*out = *in;
 		return in + 1;
@@ -614,7 +614,7 @@ decode_pfor_bitmap_interleaved_128_32(const unsigned char *in, uint32_t *out)
 template<unsigned BlockSize, class Docid>
 const unsigned char *decode_pfor_vb(const unsigned char *in, unsigned num, Docid *out)
 {
-	//fprintf(stderr, "in=%p out=%p num=%u\n", in, out, num);
+	// fprintf(stderr, "in=%p out=%p num=%u\n", in, out, num);
 
 	const unsigned bit_width = *in++ & 0x3f;
 	unsigned num_exceptions = *in++;
