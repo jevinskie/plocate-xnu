@@ -1,6 +1,8 @@
 #pragma once
 
-#ifdef __APPLE__
+#ifndef __APPLE__
+#error endian_darwin_compat.h is meant only for compilation on Apple machines
+#endif
 
 #include <libkern/OSByteOrder.h>
 
@@ -18,5 +20,3 @@
 #define htole64(x) OSSwapHostToLittleInt64(x)
 #define be64toh(x) OSSwapBigToHostInt64(x)
 #define le64toh(x) OSSwapLittleToHostInt64(x)
-
-#endif

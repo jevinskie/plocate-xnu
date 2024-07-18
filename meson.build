@@ -1,6 +1,16 @@
 project('plocate', 'cpp', default_options: ['buildtype=debugoptimized','cpp_std=c++17'], version: '1.1.17-pre')
 
-add_project_arguments('-DGROUPNAME="' + get_option('locategroup') + '"', language: 'cpp')
+if get_option('locategroup') == ''
+	if target_machine.system() != 'darwin'
+		locategroup = 'plocate'
+	else
+		locategroup = '_plocate'
+	endif
+endif
+message('Group for updatedb binary will be set to: ', locategroup)
+
+
+add_project_arguments('-DGROUPNAME="' + locategroup + '"', language: 'cpp')
 add_project_arguments('-DUPDATEDB_CONF="/etc/updatedb.conf"', language: 'cpp')
 dbfile = join_paths(get_option('prefix'), get_option('sharedstatedir'), get_option('dbpath'))
 add_project_arguments('-DDBFILE="' + dbfile + '"', language: 'cpp')
@@ -19,12 +29,19 @@ if not uringdep.found()
 endif
 if cxx.has_header('endian.h')
 	add_project_arguments('-DHAS_ENDIAN_H', language: 'cpp')
+elif target_machine.system() == 'darwin'
+	add_project_arguments('-DHAS_ENDIAN_DARWIN_COMPAT_H', language: 'cpp')
+else
+	error('no endian.h or compat shim')
 endif
 if cxx.has_header('mntent.h')
 	add_project_arguments('-DHAS_MNTENT_H', language: 'cpp')
 	mntent_compat_src = []
+elif target_machine.system() == 'darwin'
+	add_project_arguments('-DHAS_MNTENT_DARWIN_COMPAT_H', language: 'cpp')
+	mntent_compat_src = ['mntent_darwin_compat.cpp']
 else
-	mntent_compat_src = ['mntent_compat.cpp']
+	error('no mntent.h or compat shim')
 endif
 
 # Function multiversioning is x86-only _and_ not available on certain targets
@@ -39,7 +56,7 @@ endif
 executable('plocate', ['plocate.cpp', 'io_uring_engine.cpp', 'turbopfor.cpp', 'parse_trigrams.cpp', 'serializer.cpp', 'access_rx_cache.cpp', 'needle.cpp', 'complete_pread.cpp'],
 	dependencies: [uringdep, zstddep, threaddep, atomicdep],
 	install: true,
-	install_mode: ['rwxr-sr-x', 'root', get_option('locategroup')])
+	install_mode: ['rwxr-sr-x', 'root', locategroup])
 executable('plocate-build', ['plocate-build.cpp', 'database-builder.cpp'],
 	dependencies: [zstddep],
 	install: true,
@@ -53,7 +70,7 @@ executable(updatedb_progname, ['updatedb.cpp', 'database-builder.cpp', 'conf.cpp
 conf_data = configuration_data()
 conf_data.set('PROCESSED_BY_MESON', '1')
 conf_data.set('sbindir', join_paths(get_option('prefix'), get_option('sbindir')))
-conf_data.set('groupname', get_option('locategroup'))
+conf_data.set('groupname', locategroup)
 conf_data.set('dbfile', dbfile)
 conf_data.set('updatedb_conf', '/etc/updatedb.conf')
 conf_data.set('updatedb_progname', updatedb_progname)

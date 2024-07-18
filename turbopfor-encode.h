@@ -15,8 +15,10 @@
 #include <assert.h>
 #ifdef HAS_ENDIAN_H
 #include <endian.h>
+#elif defined(HAS_ENDIAN_DARWIN_COMPAT_H)
+#include "endian_darwin_compat.h"
 #else
-#include "endian_compat.h"
+#error no endian.h or compat shim
 #endif
 #include <limits.h>
 #include <stdint.h>

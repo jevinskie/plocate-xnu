@@ -44,8 +44,10 @@ any later version.
 #include <memory>
 #ifdef HAS_MNTENT_H
 #include <mntent.h>
+#elif defined(HAS_MNTENT_DARWIN_COMPAT_H)
+#include "mntent_darwin_compat.h"
 #else
-#include "mntent_compat.h"
+#error no mntent.h or compat shim
 #endif
 #include <random>
 #include <stdint.h>
