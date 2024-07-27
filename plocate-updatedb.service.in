@@ -7,6 +7,7 @@ Type=oneshot
 ExecStart=@sbindir@/@updatedb_progname@
 LimitNOFILE=131072
 IOSchedulingClass=idle
+Nice=19
 
 PrivateTmp=true
 PrivateDevices=true
