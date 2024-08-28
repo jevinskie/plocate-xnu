@@ -799,6 +799,7 @@ void parse_dbpaths(const char *ptr, vector<string> *output)
 		if (*ptr == ':') {
 			// Separator.
 			output->push_back(move(str));
+			str.clear();
 			++ptr;
 			continue;
 		}
