@@ -489,6 +489,7 @@ uint64_t do_search_file(const vector<Needle> &needles, const std::string &filena
 	start = steady_clock::now();
 	if (access("/", R_OK | X_OK)) {
 		// We can't find anything, no need to bother...
+		close(fd);
 		return 0;
 	}
 
@@ -534,6 +535,7 @@ uint64_t do_search_file(const vector<Needle> &needles, const std::string &filena
 		uint64_t matched = scan_all_docids(needles, fd, corpus);
 		dprintf("Done in %.1f ms, found %" PRId64 " matches.\n",
 		        1e3 * duration<float>(steady_clock::now() - start).count(), matched);
+		close(fd);
 		return matched;
 	}
 
@@ -592,6 +594,7 @@ uint64_t do_search_file(const vector<Needle> &needles, const std::string &filena
 	dprintf("Hashtable lookups done after %.1f ms.\n", 1e3 * duration<float>(steady_clock::now() - start).count());
 
 	if (should_early_exit) {
+		close(fd);
 		return 0;
 	}
 
@@ -677,6 +680,7 @@ uint64_t do_search_file(const vector<Needle> &needles, const std::string &filena
 	}
 	engine.finish();
 	if (done) {
+		close(fd);
 		return 0;
 	}
 	dprintf("Intersection done after %.1f ms. Doing final verification and printing:\n",
@@ -685,6 +689,7 @@ uint64_t do_search_file(const vector<Needle> &needles, const std::string &filena
 	uint64_t matched = scan_docids(needles, cur_candidates, corpus, &engine);
 	dprintf("Done in %.1f ms, found %" PRId64 " matches.\n",
 	        1e3 * duration<float>(steady_clock::now() - start).count(), matched);
+	close(fd);
 	return matched;
 }
 
