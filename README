@@ -17,7 +17,7 @@ do not have an SSD. Installation is run as:
   ninja
   sudo addgroup --system plocate
   sudo ninja install
-  sudo systemctl enable plocate-updatedb.timer
+  sudo systemctl enable --now plocate-updatedb.timer
 
 To build the database for the first time after install, you can do
 
