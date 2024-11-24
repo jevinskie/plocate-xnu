@@ -1,3 +1,10 @@
+plocate 1.1.23, November 24th, 2024
+
+  - Various improvements, in particular to the systemd unit file.
+    Patches by Ondrej Mosnáček, Michal Sekletar, Petasus Ruber
+    and Lucas Werkmeister.
+
+
 plocate 1.1.22, January 12th, 2024
 
   - Revert the updatedb change in 1.1.21 that did not open
