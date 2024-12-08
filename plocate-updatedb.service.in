@@ -1,6 +1,5 @@
 [Unit]
 Description=Update the plocate database
-ConditionACPower=true
 
 [Service]
 Type=oneshot
