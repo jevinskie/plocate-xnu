@@ -1,4 +1,4 @@
-project('plocate', 'cpp', default_options: ['buildtype=release', 'cpp_std=c++17', 'b_lto=true'], version: '1.1.22')
+project('plocate', 'cpp', default_options: ['buildtype=release', 'cpp_std=c++17', 'b_lto=true'], version: '1.1.24-dev')
 
 if get_option('locategroup') == ''
 	if target_machine.system() != 'darwin'

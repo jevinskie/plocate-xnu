@@ -1,13 +1,27 @@
 [Unit]
 Description=Update the plocate database
-ConditionACPower=true
 
 [Service]
 Type=oneshot
 ExecStart=@sbindir@/@updatedb_progname@
 LimitNOFILE=131072
 IOSchedulingClass=idle
+Nice=19
 
+CapabilityBoundingSet=CAP_DAC_READ_SEARCH CAP_CHOWN
+IPAddressDeny=any
+LockPersonality=true
+MemoryDenyWriteExecute=true
+NoNewPrivileges=true
 PrivateTmp=true
 PrivateDevices=true
 PrivateNetwork=true
+ProtectClock=true
+ProtectControlGroups=true
+ProtectHostname=true
+RestrictAddressFamilies=AF_UNIX
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+SystemCallArchitectures=native
+SystemCallFilter=@system-service @chown
